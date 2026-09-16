@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101827" />
+    <title>Millisekund | Reaksiya testi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Millisekund bosh sahifa">
+          <span class="brand-mark" aria-hidden="true">+</span>
+          <span>Millisekund</span>
+        </a>
+        <div class="live-indicator"><span></span> jonli test</div>
+      </header>
+
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">Reaksiya laboratoriyasi / 001</p>
+        <h1 id="page-title">Qanchalik tez<br /><em>javob berasiz?</em></h1>
+        <p class="intro-copy">Yashil rangni ko'rishingiz bilan Space tugmasini bosing. Natijangiz millisekund, mikrosekund va nanosekundda ko'rsatiladi.</p>
+      </section>
+
+      <section class="test-layout" aria-label="Reaksiya testi">
+        <div class="test-stage" id="testStage" tabindex="0" role="button" aria-label="Reaksiya testini boshlash uchun Space tugmasini bosing">
+          <div class="stage-noise" aria-hidden="true"></div>
+          <div class="stage-content">
+            <p class="stage-kicker" id="stageKicker">TAYYORMISIZ?</p>
+            <div class="stage-value" id="stageValue">SPACE</div>
+            <p class="stage-message" id="stageMessage">Boshlash uchun bosing</p>
+          </div>
+          <div class="stage-corner stage-corner-top">01 / 05</div>
+          <div class="stage-corner stage-corner-bottom">SPACE = START</div>
+        </div>
+
+        <aside class="stats-panel" aria-label="Natijalar">
+          <div class="stats-heading">
+            <span>Natijalar</span>
+            <span class="stats-rule"></span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Oxirgi natija</span>
+            <strong id="lastResult">--<small> ms</small></strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Eng yaxshi</span>
+            <strong id="bestResult">--<small> ms</small></strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Testlar soni</span>
+            <strong id="attempts">0</strong>
+          </div>
+          <div class="conversion-block" aria-live="polite">
+            <span class="stat-label">Aniq o'lchov</span>
+            <p id="conversionResult">Natija chiqqach, birliklar shu yerda ko'rinadi.</p>
+          </div>
+          <button class="reset-button" id="resetButton" type="button">
+            <span aria-hidden="true">↺</span> Natijalarni tozalash
+          </button>
+        </aside>
+      </section>
+
+      <section class="leaderboard" aria-labelledby="leaderboard-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Tezlik arxivi</p>
+            <h2 id="leaderboard-title">Reyting doskasi</h2>
+          </div>
+          <span id="currentNickname" class="nickname-badge">@nik</span>
+        </div>
+        <ol id="leaderboardList" class="leaderboard-list"></ol>
+      </section>
+
+      <footer class="footer-note">
+        <span>Space tugmasi</span>
+        <span class="footer-dash"></span>
+        <span>5 soniya ichida javob bering</span>
+      </footer>
+    </main>
+    <div class="nickname-overlay" id="nicknameOverlay" role="dialog" aria-modal="true" aria-labelledby="nicknameTitle">
+      <form class="nickname-card" id="nicknameForm">
+        <p class="eyebrow">Millisekund / Kirish</p>
+        <h2 id="nicknameTitle">Yaxshi nik bilan kiring</h2>
+        <p>Reyting doskasida sizni shu nik orqali taniymiz. Nik bir marta ishlatiladi.</p>
+        <label for="nicknameInput">Nik</label>
+        <input id="nicknameInput" name="nickname" type="text" minlength="3" maxlength="18" pattern="[A-Za-z0-9_]+" autocomplete="username" placeholder="masalan, tezkor_01" required />
+        <p class="form-error" id="nicknameError" role="alert"></p>
+        <button class="primary-button" type="submit">Reytingga kirish <span aria-hidden="true">→</span></button>
+        <button class="google-button" type="button" id="googleButton"><span aria-hidden="true">G</span> Google akkaunt bilan bog'lash</button>
+        <small class="auth-note">Google bog'lash uchun OAuth server sozlamasi kerak.</small>
+      </form>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
