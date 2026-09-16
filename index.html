@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <main class="app-shell">
@@ -90,11 +91,15 @@
         <label for="nicknameInput">Nik</label>
         <input id="nicknameInput" name="nickname" type="text" minlength="3" maxlength="18" pattern="[A-Za-z0-9_]+" autocomplete="username" placeholder="masalan, tezkor_01" required />
         <p class="form-error" id="nicknameError" role="alert"></p>
-        <button class="primary-button" type="submit">Reytingga kirish <span aria-hidden="true">→</span></button>
-        <button class="google-button" type="button" id="googleButton"><span aria-hidden="true">G</span> Google akkaunt bilan bog'lash</button>
-        <small class="auth-note">Google bog'lash uchun OAuth server sozlamasi kerak.</small>
+        <button class="primary-button" type="submit">Faqat lokal o'ynash <span aria-hidden="true">→</span></button>
+        <div id="googleSignInDiv" class="google-signin-slot"></div>
+        <small class="auth-note" id="authNote">Global reytingga chiqish uchun Google bilan kiring. Nik Google akkauntingizga biriktiriladi.</small>
       </form>
     </div>
+    <script>
+      // Google Cloud Console'dan olingan Web OAuth Client ID. Bu qiymat maxfiy emas, frontend'da ochiq turishi normal.
+      window.GOOGLE_CLIENT_ID = '766862887081-bb94ojb8lavd699qa9af51b52h7hd6qs.apps.googleusercontent.com';
+    </script>
     <script src="script.js"></script>
   </body>
 </html>

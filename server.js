@@ -14,6 +14,12 @@ import { OAuth2Client } from 'google-auth-library';
 import { createClient } from 'redis';
 // Kiruvchi JSON ma'lumotlarini qat'iy tekshirish uchun Zod ishlatamiz.
 import { z } from 'zod';
+// Statik fayllar papkasi manzilini hisoblash uchun kerak.
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// ESM'da __dirname mavjud emas, shuning uchun o'zimiz hisoblaymiz.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // HTTP portini konfiguratsiyadan olamiz.
 const PORT = Number(process.env.PORT || 3000);
@@ -48,14 +54,45 @@ const redis = createClient({ url: REDIS_URL });
 
 // Redis ulanish xatolarini log qilamiz.
 redis.on('error', (error) => console.error('Redis xatosi:', error));
-// Xavfsiz default headerlarini yoqamiz.
-app.use(helmet());
+// Xavfsiz default headerlarini yoqamiz, lekin Google Identity Services va Google Fonts uchun ruxsat qo'shamiz.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://accounts.google.com', "'unsafe-inline'"],
+      frameSrc: ['https://accounts.google.com'],
+      connectSrc: ["'self'", 'https://accounts.google.com'],
+      styleSrc: ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'https://*.googleusercontent.com'],
+    },
+  },
+}));
 // Faqat konfiguratsiyada ko'rsatilgan frontend originiga ruxsat beramiz.
 app.use(cors({ origin: CORS_ORIGIN }));
 // JSON body hajmini kichik qilib, keraksiz katta payloadlarni rad qilamiz.
 app.use(express.json({ limit: '8kb' }));
 // Barcha API'lar uchun umumiy so'rov tezligini cheklaymiz.
 app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
+// Frontend statik fayllarini (index.html, script.js, style.css) shu server orqali xizmat qilamiz.
+app.use(express.static(__dirname));
+
+// Redis'ga faqat bitta marta ulanishni ta'minlaydigan promise (serverless funksiya qayta-qayta chaqirilishi mumkin).
+let redisConnectPromise = null;
+function ensureRedisConnected() {
+  if (!redisConnectPromise) redisConnectPromise = redis.connect();
+  return redisConnectPromise;
+}
+
+// /api bilan boshlanuvchi har bir so'rovdan oldin Redis ulanganiga ishonch hosil qilamiz.
+app.use('/api', async (request, response, next) => {
+  try {
+    await ensureRedisConnected();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Google ID tokenidan ishonchli foydalanuvchi ma'lumotini oluvchi middleware.
 async function requireGoogleUser(request, response, next) {
@@ -217,18 +254,15 @@ app.use((error, request, response, next) => {
   return response.status(500).json({ error: 'Ichki server xatosi.' });
 });
 
-// Server va Redis'ni ishga tushiruvchi asinxron bootstrap funksiyasi.
-async function start() {
-  // Avval Redis bilan bog'lanamiz.
-  await redis.connect();
-  // HTTP serverni barcha interfeyslarda tinglaymiz.
-  app.listen(PORT, '0.0.0.0', () => console.log(`Leaderboard API ${PORT}-portda ishga tushdi.`));
+// Faqat lokal/Docker rejimida (Vercel'da emas) an'anaviy HTTP serverni tinglaymiz.
+if (!process.env.VERCEL) {
+  ensureRedisConnected()
+    .then(() => app.listen(PORT, '0.0.0.0', () => console.log(`Leaderboard API ${PORT}-portda ishga tushdi.`)))
+    .catch((error) => {
+      console.error('Server ishga tushmadi:', error);
+      process.exit(1);
+    });
 }
 
-// Redis ulanishi yoki server startup xatosida jarayonni aniq to'xtatamiz.
-start().catch((error) => {
-  // Startup xatosini log qilamiz.
-  console.error('Server ishga tushmadi:', error);
-  // Orchestrator restart policy ishlashi uchun non-zero exit qilamiz.
-  process.exit(1);
-});
+// Vercel serverless funksiyasi sifatida ishlatish uchun Express ilovasini eksport qilamiz.
+export default app;

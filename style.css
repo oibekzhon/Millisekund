@@ -111,8 +111,9 @@ h2 { margin: 0; font-size: clamp(28px, 4vw, 46px); letter-spacing: -0.06em; }
 .primary-button, .google-button { width: 100%; padding: 13px 15px; cursor: pointer; font: 11px var(--mono); letter-spacing: 0.05em; }
 .primary-button { border: 1px solid var(--green); background: var(--green); color: #102016; text-transform: uppercase; }
 .primary-button span { float: right; font-size: 18px; line-height: 10px; }
-.google-button { margin-top: 10px; border: 1px solid var(--line); background: transparent; color: var(--ink); }
-.google-button span { display: inline-grid; width: 18px; height: 18px; margin-right: 7px; place-items: center; border-radius: 50%; background: var(--ink); color: var(--navy); font: 700 12px Georgia; }
+.google-signin-slot { display: flex; justify-content: center; margin-top: 14px; min-height: 40px; }
+.signed-in-badge { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding: 10px 14px; border: 1px solid var(--line); font: 12px var(--mono); color: var(--ink); }
+.signed-in-badge button { border: 0; background: transparent; color: var(--muted); cursor: pointer; text-decoration: underline; font: 11px var(--mono); }
 .auth-note { display: block; margin-top: 14px; color: var(--muted); font: 10px var(--mono); line-height: 1.4; }
 
 @keyframes count-pop { 0% { opacity: 0; transform: scale(0.75); } 100% { opacity: 1; transform: scale(1); } }
@@ -147,4 +148,4 @@ h2 { margin: 0; font-size: clamp(28px, 4vw, 46px); letter-spacing: -0.06em; }
   .nickname-card { padding: 25px 20px; }
   .nickname-card h2 { font-size: 32px; }
   .section-heading { align-items: start; flex-direction: column; }
-}
+} 
