@@ -97,6 +97,9 @@ h2 { margin: 0; font-size: clamp(28px, 4vw, 46px); letter-spacing: -0.06em; }
 .leader-name { color: var(--ink); }
 .leaderboard-row strong { color: var(--ink); font-size: 16px; font-weight: 400; }
 .leaderboard-row small { color: var(--muted); font-size: 10px; }
+.leader-time { display: grid; justify-items: end; gap: 3px; color: var(--muted); font-family: var(--mono); font-size: 10px; text-align: right; }
+.leader-time strong { color: var(--ink); font-size: 16px; font-weight: 400; }
+.leader-time span { white-space: nowrap; }
 .empty-row { padding: 20px 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .nickname-overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(10, 16, 27, 0.86); backdrop-filter: blur(8px); }
 .nickname-overlay[hidden] { display: none; }
@@ -145,6 +148,8 @@ h2 { margin: 0; font-size: clamp(28px, 4vw, 46px); letter-spacing: -0.06em; }
   .stat-label { font-size: 8px; }
   .stat-block strong { font-size: 22px; }
   .stage-corner { font-size: 8px; }
+  .leaderboard-row { grid-template-columns: 32px 1fr auto; gap: 10px; padding-inline: 8px; }
+  .leader-time span { font-size: 8px; }
   .nickname-card { padding: 25px 20px; }
   .nickname-card h2 { font-size: 32px; }
   .section-heading { align-items: start; flex-direction: column; }

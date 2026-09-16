@@ -35,18 +35,31 @@ let leaderboard = JSON.parse(localStorage.getItem('reaction-leaderboard') || '[]
 let usedNicknames = JSON.parse(localStorage.getItem('reaction-used-nicknames') || '[]');
 
 function formatUnits(nanoseconds) {
-  const milliseconds = Math.round(nanoseconds / 1_000_000);
-  const microseconds = Math.round(nanoseconds / 1_000);
-  return `<strong>${milliseconds.toLocaleString('uz-UZ')} ms</strong><span>${microseconds.toLocaleString('uz-UZ')} mikrosekund</span><span>${nanoseconds.toLocaleString('uz-UZ')} nanosekund</span>`;
+  const exactNanoseconds = BigInt(nanoseconds);
+  const milliseconds = exactNanoseconds / 1_000_000n;
+  const microseconds = exactNanoseconds / 1_000n;
+  return `<strong>${milliseconds.toLocaleString('uz-UZ')} ms</strong><span>${microseconds.toLocaleString('uz-UZ')} mikrosekund</span><span>${exactNanoseconds.toLocaleString('uz-UZ')} nanosekund</span>`;
+}
+
+function getNanoseconds(entry) {
+  if (entry.nanoseconds !== undefined) return BigInt(entry.nanoseconds);
+  return BigInt(Math.max(1, Math.round(entry.score * 1_000_000)));
+}
+
+function formatLeaderboardTime(nanoseconds) {
+  const exactNanoseconds = BigInt(nanoseconds);
+  const milliseconds = exactNanoseconds / 1_000_000n;
+  const microseconds = exactNanoseconds / 1_000n;
+  return `<strong>${milliseconds.toLocaleString('uz-UZ')}<small> ms</small></strong><span>${microseconds.toLocaleString('uz-UZ')} µs · ${exactNanoseconds.toLocaleString('uz-UZ')} ns</span>`;
 }
 
 function renderLeaderboard(rows) {
-  const sorted = rows || [...leaderboard].sort((left, right) => left.score - right.score).slice(0, 10);
+  const sorted = rows || [...leaderboard].sort((left, right) => Number(getNanoseconds(left) - getNanoseconds(right))).slice(0, 10);
   leaderboardList.innerHTML = sorted.length ? sorted.map((entry, index) => `
     <li class="leaderboard-row ${entry.nickname === nickname ? 'is-current' : ''}">
       <span class="rank">${String(index + 1).padStart(2, '0')}</span>
       <span class="leader-name">@${entry.nickname}</span>
-      <strong>${entry.score}<small> ms</small></strong>
+      <span class="leader-time">${formatLeaderboardTime(getNanoseconds(entry))}</span>
     </li>`).join('') : '<li class="empty-row">Hali natija yo\'q. Birinchi bo\'lib o\'zingizni sinang.</li>';
   currentNickname.textContent = nickname ? `@${nickname}` : '@nik';
 }
@@ -58,7 +71,7 @@ async function fetchLeaderboard() {
     if (!response.ok) throw new Error('leaderboard fetch failed');
     const { data } = await response.json();
     isGlobalMode = true;
-    renderLeaderboard(data.map((row) => ({ nickname: row.nickname, score: Number(row.milliseconds) })));
+    renderLeaderboard(data);
   } catch (error) {
     // Backend mavjud bo'lmasa (masalan lokal statik rejim), lokal reytingga qaytamiz.
     isGlobalMode = false;
@@ -123,7 +136,7 @@ function initGoogleSignIn() {
 }
 
 function showNicknameGate() {
-  if (nickname) {
+  if (nickname && googleIdToken) {
     nicknameOverlay.hidden = true;
     renderLeaderboard();
     return;
@@ -185,8 +198,9 @@ function handleResponse() {
   localStorage.setItem('reaction-best', best);
   // Lokal (bu qurilmadagi) reytingni har doim yangilab boramiz, global rejim mavjud bo'lmasa ham ishlashi uchun.
   const existingEntry = leaderboard.find((entry) => entry.nickname === nickname);
-  if (existingEntry) existingEntry.score = Math.min(existingEntry.score, result);
-  else leaderboard.push({ nickname, score: result });
+  if (existingEntry) {
+    existingEntry.nanoseconds = getNanoseconds(existingEntry) > preciseNs ? preciseNs.toString() : getNanoseconds(existingEntry).toString();
+  } else leaderboard.push({ nickname, nanoseconds: preciseNs.toString() });
   localStorage.setItem('reaction-leaderboard', JSON.stringify(leaderboard));
   lastResult.innerHTML = `${result}<small> ms</small>`;
   conversionResult.innerHTML = formatUnits(preciseNs);
@@ -238,6 +252,10 @@ resetButton.addEventListener('click', () => {
 
 nicknameForm.addEventListener('submit', (event) => {
   event.preventDefault();
+  if (!googleIdToken) {
+    nicknameError.textContent = 'Avval Google akkaunt orqali kiring.';
+    return;
+  }
   const nextNickname = nicknameInput.value.trim();
   const nicknameTaken = usedNicknames.some((usedNickname) => usedNickname.toLowerCase() === nextNickname.toLowerCase());
   if (nicknameTaken) {

@@ -80,7 +80,12 @@ app.use(express.static(__dirname));
 // Redis'ga faqat bitta marta ulanishni ta'minlaydigan promise (serverless funksiya qayta-qayta chaqirilishi mumkin).
 let redisConnectPromise = null;
 function ensureRedisConnected() {
-  if (!redisConnectPromise) redisConnectPromise = redis.connect();
+  if (!redisConnectPromise) {
+    redisConnectPromise = redis.connect().catch((error) => {
+      redisConnectPromise = null;
+      throw error;
+    });
+  }
   return redisConnectPromise;
 }
 
@@ -88,9 +93,9 @@ function ensureRedisConnected() {
 app.use('/api', async (request, response, next) => {
   try {
     await ensureRedisConnected();
-    next();
+    return next();
   } catch (error) {
-    next(error);
+    return response.status(503).json({ error: 'Redis hozircha ishlamayapti.' });
   }
 });
 
@@ -240,10 +245,14 @@ app.post('/api/leaderboard/submit', requireGoogleUser, rateLimit({ windowMs: 60 
 
 // API health-check endpointini taqdim qilamiz.
 app.get('/health', async (request, response) => {
-  // Redis ulanish holatini tekshiramiz.
-  const redisStatus = redis.isReady ? 'up' : 'down';
-  // Monitoring uchun sodda holat qaytaramiz.
-  return response.status(redis.isReady ? 200 : 503).json({ status: redisStatus });
+  try {
+    // Health check ni haqiqiy Redis ulanishi bilan tekshiramiz.
+    await ensureRedisConnected();
+    return response.status(redis.isReady ? 200 : 503).json({ status: redis.isReady ? 'up' : 'down' });
+  } catch (error) {
+    console.error('Health check xatosi:', error);
+    return response.status(503).json({ status: 'down' });
+  }
 });
 
 // Kutilmagan xatolar uchun oxirgi Express error handleri.
@@ -256,12 +265,7 @@ app.use((error, request, response, next) => {
 
 // Faqat lokal/Docker rejimida (Vercel'da emas) an'anaviy HTTP serverni tinglaymiz.
 if (!process.env.VERCEL) {
-  ensureRedisConnected()
-    .then(() => app.listen(PORT, '0.0.0.0', () => console.log(`Leaderboard API ${PORT}-portda ishga tushdi.`)))
-    .catch((error) => {
-      console.error('Server ishga tushmadi:', error);
-      process.exit(1);
-    });
+  app.listen(PORT, '0.0.0.0', () => console.log(`Leaderboard API ${PORT}-portda ishga tushdi.`));
 }
 
 // Vercel serverless funksiyasi sifatida ishlatish uchun Express ilovasini eksport qilamiz.
