@@ -17,7 +17,7 @@ const googleSignInDiv = document.querySelector('#googleSignInDiv');
 const authNote = document.querySelector('#authNote');
 
 // Backend bilan bir domenda joylashtirilgan bo'lsa (Vercel), nisbiy manzil yetarli.
-const API_BASE = '';
+const API_BASE = 'https://millisekund-api.onrender.com';
 // Google ID tokenini shu seans davomida saqlaymiz (sahifa yopilsa yo'qoladi).
 let googleIdToken = sessionStorage.getItem('google-id-token') || '';
 // Global rejim faol bo'lsa, reyting backend'dan olinadi.
