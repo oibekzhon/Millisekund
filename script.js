@@ -34,8 +34,10 @@ let nickname = localStorage.getItem('reaction-nickname') || '';
 let leaderboard = JSON.parse(localStorage.getItem('reaction-leaderboard') || '[]');
 let usedNicknames = JSON.parse(localStorage.getItem('reaction-used-nicknames') || '[]');
 
-function formatUnits(result) {
-  return `<strong>${result.toLocaleString('uz-UZ')} ms</strong><span>${(result * 1000).toLocaleString('uz-UZ')} mikrosekund</span><span>${(result * 1000000).toLocaleString('uz-UZ')} nanosekund</span>`;
+function formatUnits(nanoseconds) {
+  const milliseconds = Math.round(nanoseconds / 1_000_000);
+  const microseconds = Math.round(nanoseconds / 1_000);
+  return `<strong>${milliseconds.toLocaleString('uz-UZ')} ms</strong><span>${microseconds.toLocaleString('uz-UZ')} mikrosekund</span><span>${nanoseconds.toLocaleString('uz-UZ')} nanosekund</span>`;
 }
 
 function renderLeaderboard(rows) {
@@ -173,6 +175,8 @@ function startCountdown() {
 function handleResponse() {
   const rawMs = performance.now() - greenAt;
   const result = Math.round(rawMs);
+  // Aniq breakdown va backend'ga yuborish uchun bitta haqiqiy nanosekund qiymatini hisoblaymiz (yaxlitlangan ms'dan emas).
+  const preciseNs = Math.max(1, Math.round(rawMs * 1_000_000));
   state = 'result';
   clearTimeout(responseTimer);
   attempts += 1;
@@ -185,13 +189,12 @@ function handleResponse() {
   else leaderboard.push({ nickname, score: result });
   localStorage.setItem('reaction-leaderboard', JSON.stringify(leaderboard));
   lastResult.innerHTML = `${result}<small> ms</small>`;
-  conversionResult.innerHTML = formatUnits(result);
+  conversionResult.innerHTML = formatUnits(preciseNs);
   setStage({ mode: 'result', kicker: 'NATIJA', value: `${result} ms`, message: 'Qayta sinash uchun Space bosing' });
   updateStats();
-  // Google bilan ulangan bo'lsa, aniq nanosekund qiymatini global reytingga yuboramiz.
+  // Google bilan ulangan bo'lsa, xuddi shu aniq nanosekund qiymatini global reytingga yuboramiz.
   if (googleIdToken) {
-    const elapsedNs = BigInt(Math.max(1, Math.round(rawMs * 1_000_000)));
-    submitToGlobalLeaderboard(elapsedNs);
+    submitToGlobalLeaderboard(BigInt(preciseNs));
   } else if (isGlobalMode) {
     fetchLeaderboard();
   }
