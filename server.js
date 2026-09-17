@@ -152,6 +152,17 @@ app.post('/api/auth/session', rateLimit({ windowMs: 60 * 1000, limit: 10, standa
   }
 });
 
+app.delete('/api/auth/session', async (request, response, next) => {
+  try {
+    const authorization = request.get('authorization') || '';
+    const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+    if (token) await pool.query('DELETE FROM user_sessions WHERE token_hash = $1', [hashToken(token)]);
+    return response.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 async function optionalUser(request, response, next) {
   if (!request.get('authorization')) return next();
   return requireUser(request, response, next);

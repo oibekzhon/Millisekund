@@ -10,6 +10,7 @@ const conversionResult = document.querySelector('#conversionResult');
 const leaderboardList = document.querySelector('#leaderboardList');
 const currentNickname = document.querySelector('#currentNickname');
 const showMoreButton = document.querySelector('#showMoreButton');
+const logoutButton = document.querySelector('#logoutButton');
 const nicknameOverlay = document.querySelector('#nicknameOverlay');
 const nicknameForm = document.querySelector('#nicknameForm');
 const nicknameInput = document.querySelector('#nicknameInput');
@@ -113,6 +114,7 @@ async function submitToGlobalLeaderboard(elapsedNs) {
       body: JSON.stringify({ nickname, elapsedNs: elapsedNs.toString() }),
     });
     const payload = await response.json();
+    if (response.status === 401) return logout();
     if (!response.ok) {
       nicknameError.textContent = payload.error || 'Natijani yuborishda xatolik.';
       return;
@@ -124,6 +126,7 @@ async function submitToGlobalLeaderboard(elapsedNs) {
 }
 
 function showNicknameGate() {
+  logoutButton.hidden = !(nickname && sessionToken);
   if (nickname && sessionToken) {
     nicknameOverlay.hidden = true;
     renderLeaderboard();
@@ -131,6 +134,25 @@ function showNicknameGate() {
   }
   nicknameOverlay.hidden = false;
   nicknameInput.focus();
+}
+
+async function logout() {
+  if (sessionToken) {
+    try {
+      await fetch(`${API_BASE}/api/auth/session`, { method: 'DELETE', headers: { Authorization: `Bearer ${sessionToken}` } });
+    } catch (error) {
+      console.error('Sessiyani yopishda xato:', error);
+    }
+  }
+  sessionToken = '';
+  nickname = '';
+  localStorage.removeItem('millisekund-session');
+  localStorage.removeItem('reaction-nickname');
+  nicknameForm.reset();
+  nicknameError.textContent = '';
+  showIdle();
+  showNicknameGate();
+  await fetchLeaderboard();
 }
 
 function updateStats() {
@@ -168,7 +190,7 @@ function startCountdown() {
     clearInterval(countdownTimer);
     state = 'ready';
     greenAt = performance.now();
-    setStage({ mode: 'ready', kicker: 'HOZIR!', value: 'SPACE', message: 'Darhol bosing!' });
+    setStage({ mode: 'counting', kicker: 'HOZIR!', value: 'SPACE', message: 'Darhol bosing!' });
     responseTimer = setTimeout(handleTimeout, MAX_WAIT);
   }, 1000);
 }
@@ -214,7 +236,7 @@ function handleSpace() {
 }
 
 document.addEventListener('keydown', (event) => {
-  if (event.code !== 'Space') return;
+  if (event.code !== 'Space' || !nicknameOverlay.hidden) return;
   event.preventDefault();
   handleSpace();
 });
@@ -241,6 +263,7 @@ nicknameForm.addEventListener('submit', (event) => {
 });
 
 showMoreButton.addEventListener('click', loadMoreLeaderboard);
+logoutButton.addEventListener('click', logout);
 
 updateStats();
 showNicknameGate();
