@@ -7,7 +7,6 @@ const bestResult = document.querySelector('#bestResult');
 const attemptsLabel = document.querySelector('#attempts');
 const resetButton = document.querySelector('#resetButton');
 const conversionResult = document.querySelector('#conversionResult');
-const networkResult = document.querySelector('#networkResult');
 const leaderboardList = document.querySelector('#leaderboardList');
 const currentNickname = document.querySelector('#currentNickname');
 const showMoreButton = document.querySelector('#showMoreButton');
@@ -112,7 +111,6 @@ async function loadMoreLeaderboard() {
 
 async function submitToGlobalLeaderboard(elapsedNs) {
   if (!sessionToken || !nickname) return;
-  const requestStartedAt = performance.now();
   try {
     const response = await fetch(`${API_BASE}/api/leaderboard/submit`, {
       method: 'POST',
@@ -120,8 +118,6 @@ async function submitToGlobalLeaderboard(elapsedNs) {
       body: JSON.stringify({ nickname, elapsedNs: elapsedNs.toString() }),
     });
     const payload = await response.json();
-    const roundTripNs = BigInt(Math.max(0, Math.round((performance.now() - requestStartedAt) * 1_000_000)));
-    networkResult.textContent = `Server kechikishi: ${roundTripNs.toLocaleString('uz-UZ')} ns`;
     if (response.status === 401) return logout();
     if (!response.ok) {
       nicknameError.textContent = payload.error || 'Natijani yuborishda xatolik.';
@@ -129,7 +125,6 @@ async function submitToGlobalLeaderboard(elapsedNs) {
     }
     await fetchLeaderboard();
   } catch (error) {
-    networkResult.textContent = "Server kechikishi: o'lchanmadi";
     console.error('Global reytingga yuborishda xato:', error);
   }
 }
