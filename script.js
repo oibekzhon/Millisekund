@@ -21,6 +21,7 @@ const authNote = document.querySelector('#authNote');
 const API_BASE = window.location.hostname.endsWith('github.io')
   ? 'https://millisekund.vercel.app'
   : '';
+console.info('[Millisekund] Google OAuth origin:', window.location.origin, 'client:', window.GOOGLE_CLIENT_ID || 'not loaded');
 // Google ID tokenini shu seans davomida saqlaymiz (sahifa yopilsa yo'qoladi).
 let googleIdToken = sessionStorage.getItem('google-id-token') || '';
 // Global rejim faol bo'lsa, reyting backend'dan olinadi.
