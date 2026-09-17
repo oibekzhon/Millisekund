@@ -43,6 +43,10 @@ function formatUnits(nanoseconds) {
   return `<strong>${milliseconds.toLocaleString('uz-UZ')} ms</strong><span>${microseconds.toLocaleString('uz-UZ')} mikrosekund</span><span>${exactNanoseconds.toLocaleString('uz-UZ')} nanosekund</span>`;
 }
 
+function measureNanoseconds(startTime) {
+  return BigInt(Math.max(1, Math.round((performance.now() - startTime) * 1_000_000)));
+}
+
 function getNanoseconds(entry) {
   if (entry.nanoseconds !== undefined) return BigInt(entry.nanoseconds);
   return BigInt(Math.max(1, Math.round(entry.score * 1_000_000)));
@@ -196,9 +200,8 @@ function startCountdown() {
 }
 
 function handleResponse() {
-  const rawMs = performance.now() - greenAt;
-  const result = Math.round(rawMs);
-  const preciseNs = Math.max(1, Math.round(rawMs * 1_000_000));
+  const preciseNs = measureNanoseconds(greenAt);
+  const result = Number(preciseNs / 1_000_000n);
   state = 'result';
   clearTimeout(responseTimer);
   attempts += 1;
