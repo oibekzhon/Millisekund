@@ -16,8 +16,10 @@ const nicknameError = document.querySelector('#nicknameError');
 const googleSignInDiv = document.querySelector('#googleSignInDiv');
 const authNote = document.querySelector('#authNote');
 
-// Frontend va API bitta deployda xizmat qilinadi, shuning uchun production'da relative URL ishlatamiz.
-const API_BASE = window.location.protocol === 'http:' || window.location.protocol === 'https:' ? '' : 'http://localhost:3000';
+// GitHub Pages frontend'i API uchun Vercel deploy'iga, Vercel frontend'i esa same-origin API'ga murojaat qiladi.
+const API_BASE = window.location.hostname.endsWith('github.io')
+  ? 'https://millisekund.vercel.app'
+  : '';
 // Google ID tokenini shu seans davomida saqlaymiz (sahifa yopilsa yo'qoladi).
 let googleIdToken = sessionStorage.getItem('google-id-token') || '';
 // Global rejim faol bo'lsa, reyting backend'dan olinadi.
