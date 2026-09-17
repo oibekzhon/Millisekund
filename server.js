@@ -1,49 +1,31 @@
-// Muhit o'zgaruvchilarini process.env ichiga yuklaymiz.
 import 'dotenv/config';
-// HTTP API yaratish uchun Express frameworkini import qilamiz.
 import express from 'express';
-// Xavfsiz HTTP headerlarini qo'shamiz.
 import helmet from 'helmet';
-// Frontend originlarini boshqarish uchun CORS middleware'ini import qilamiz.
 import cors from 'cors';
-// Har bir endpointga ortiqcha so'rov yuborishni cheklaymiz.
 import rateLimit from 'express-rate-limit';
-// Google ID tokenlarini imzo va audience bo'yicha tekshiramiz.
 import { OAuth2Client } from 'google-auth-library';
-// Railway PostgreSQL serveriga ulanish uchun rasmiy klientni import qilamiz.
 import pg from 'pg';
-// Kiruvchi JSON ma'lumotlarini qat'iy tekshirish uchun Zod ishlatamiz.
 import { z } from 'zod';
-// Statik fayllar papkasi manzilini hisoblash uchun kerak.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// ESM'da __dirname mavjud emas, shuning uchun o'zimiz hisoblaymiz.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// HTTP portini konfiguratsiyadan olamiz.
 const PORT = Number(process.env.PORT || 3000);
-// Railway PostgreSQL ulanish URL'sini konfiguratsiyadan olamiz.
 const DATABASE_URL = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
-// Google OAuth client ID'si ID token audience'i bilan aynan bir xil bo'lishi kerak.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-// Frontend originlarini wildcard emas, vergul bilan ajratilgan aniq ro'yxat sifatida qabul qilamiz.
 const CORS_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:3000')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-// Bir rekord uchun maksimal ruxsat etilgan vaqtni BigInt ko'rinishida saqlaymiz.
 const MAX_RESULT_NS = BigInt(process.env.MAX_RESULT_NS || '60000000000');
 
-// Express ilovasini yaratamiz.
 const app = express();
-// Google ID tokenlarini tekshiruvchi klientni yaratamiz.
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
-// Railway PostgreSQL klientini konfiguratsiya qilamiz.
 const { Pool } = pg;
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, connectionTimeoutMillis: 10000, ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } }) : null;
-// Xavfsiz default headerlarini yoqamiz, lekin Google Identity Services va Google Fonts uchun ruxsat qo'shamiz.
 app.use(helmet({
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -56,19 +38,14 @@ app.use(helmet({
     },
   },
 }));
-// Har bir so'rov uchun faqat bitta mos originni qaytaramiz; brauzer bir nechta
-// Access-Control-Allow-Origin qiymatini qabul qilmaydi.
 app.use(cors({
   origin: (requestOrigin, callback) => {
     if (!requestOrigin || CORS_ORIGINS.includes(requestOrigin)) return callback(null, true);
     return callback(new Error('Origin CORS ro\'yxatida yo\'q.'));
   },
 }));
-// JSON body hajmini kichik qilib, keraksiz katta payloadlarni rad qilamiz.
 app.use(express.json({ limit: '8kb' }));
-// Barcha API'lar uchun umumiy so'rov tezligini cheklaymiz.
 app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
-// Frontend statik fayllarini (index.html, script.js, style.css) shu server orqali xizmat qilamiz.
 app.use(express.static(__dirname));
 
 let databaseInitPromise = null;
@@ -104,56 +81,35 @@ app.use('/api', async (request, response, next) => {
   }
 });
 
-// Google ID tokenidan ishonchli foydalanuvchi ma'lumotini oluvchi middleware.
 async function requireGoogleUser(request, response, next) {
-  // Konfiguratsiya xatosi butun frontendni yiqitmasin; faqat autentifikatsiya endpointi ishlamasin.
   if (!googleClient) return response.status(503).json({ error: 'GOOGLE_CLIENT_ID serverda sozlanmagan.' });
-  // Authorization headerini olamiz.
   const authorization = request.get('authorization') || '';
-  // Faqat Bearer sxemasidagi tokenni qabul qilamiz.
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
-  // Token bo'lmasa, so'rovni autentifikatsiyasiz davom ettirmaymiz.
   if (!token) return response.status(401).json({ error: 'Bearer Google ID token talab qilinadi.' });
-  // Tokenni Google public keys, issuer va audience bilan tekshiramiz.
   try {
     const ticket = await googleClient.verifyIdToken({ idToken: token, audience: GOOGLE_CLIENT_ID });
-    // Tekshirilgan payloadni keyingi handlerga uzatamiz.
     const payload = ticket.getPayload();
-    // Google subject identifikatori bo'lmasa, foydalanuvchi identifikatsiyasi ishonchsiz hisoblanadi.
     if (!payload?.sub || payload.email_verified !== true) return response.status(401).json({ error: 'Google akkaunti tasdiqlanmagan.' });
-    // Faqat verification'dan o'tgan qiymatlarni request obyektiga biriktiramiz.
     request.user = { id: payload.sub, email: payload.email || '', name: payload.name || 'Google user' };
-    // Keyingi middleware yoki route handlerga o'tamiz.
     return next();
   } catch (error) {
-    // Token xatosining ichki tafsilotlarini mijozga chiqarmaymiz.
     return response.status(401).json({ error: 'Google ID token yaroqsiz yoki muddati tugagan.' });
   }
 }
 
-// POST body uchun faqat decimal nanosekund stringini qabul qilamiz.
 const submitSchema = z.object({
-  // BigInt JSON orqali yuborilmagani uchun nanosekund string sifatida qabul qilinadi.
   elapsedNs: z.string().regex(/^\d+$/),
 });
 
-// Decimal stringni xavfsiz BigInt'ga aylantiruvchi funksiya.
 function parseNanoseconds(value) {
-  // Oddiy Number ishlatmaymiz, chunki u 2^53 dan keyin nanosekundlarni yaxlitlaydi.
   const elapsedNs = BigInt(value);
-  // Nol va juda katta qiymatlarni rad qilamiz.
   if (elapsedNs < 1n || elapsedNs > MAX_RESULT_NS) throw new Error('Nanosekund qiymati ruxsat etilgan oraliqdan tashqarida.');
-  // Keyingi hisoblar uchun aniq BigInt qiymatni qaytaramiz.
   return elapsedNs;
 }
 
-// Nanosekundni foydalanuvchiga kerakli uch birlikka ajratamiz.
 function formatUnits(elapsedNs) {
-  // Millisekundning butun qismi va qolgan nanosekundni ajratamiz.
   const milliseconds = elapsedNs / 1_000_000n;
-  // Mikrosekundning butun qismi va qolgan nanosekundni ajratamiz.
   const microseconds = elapsedNs / 1_000n;
-  // BigInt qiymatlarni JSON serializatsiyasiga mos decimal string sifatida qaytaramiz.
   return { nanoseconds: elapsedNs.toString(), microseconds: microseconds.toString(), milliseconds: milliseconds.toString() };
 }
 
@@ -226,7 +182,6 @@ app.post('/api/leaderboard/submit', requireGoogleUser, rateLimit({ windowMs: 60 
   }
 });
 
-// API health-check endpointini taqdim qilamiz.
 app.get('/health', async (request, response) => {
   try {
     await ensureDatabase();
@@ -237,18 +192,13 @@ app.get('/health', async (request, response) => {
   }
 });
 
-// Kutilmagan xatolar uchun oxirgi Express error handleri.
 app.use((error, request, response, next) => {
-  // Server logida to'liq xatoni saqlaymiz.
   console.error('Kutilmagan API xatosi:', error);
-  // Mijozga ichki stack trace chiqarmaymiz.
   return response.status(500).json({ error: 'Ichki server xatosi.' });
 });
 
-// Faqat lokal/Docker rejimida (Vercel'da emas) an'anaviy HTTP serverni tinglaymiz.
 if (!process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => console.log(`Leaderboard API ${PORT}-portda ishga tushdi.`));
 }
 
-// Vercel serverless funksiyasi sifatida ishlatish uchun Express ilovasini eksport qilamiz.
 export default app;
