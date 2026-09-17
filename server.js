@@ -40,15 +40,10 @@ const USER_RECORDS_KEY = 'leaderboard:user-records:v1';
 // Bitta Google subject'iga bitta nikni qat'iy bog'lash uchun Redis HASH kalitini belgilaymiz.
 const USER_NICKNAMES_KEY = 'leaderboard:user-nicknames:v1';
 
-// Google client ID berilmagan bo'lsa, serverni noto'g'ri autentifikatsiya bilan ishga tushirmaymiz.
-if (!GOOGLE_CLIENT_ID) {
-  throw new Error('GOOGLE_CLIENT_ID muhit o\'zgaruvchisi majburiy.');
-}
-
 // Express ilovasini yaratamiz.
 const app = express();
 // Google ID tokenlarini tekshiruvchi klientni yaratamiz.
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 // Redis klientini konfiguratsiya qilamiz.
 const redis = createClient({ url: REDIS_URL });
 
@@ -101,6 +96,8 @@ app.use('/api', async (request, response, next) => {
 
 // Google ID tokenidan ishonchli foydalanuvchi ma'lumotini oluvchi middleware.
 async function requireGoogleUser(request, response, next) {
+  // Konfiguratsiya xatosi butun frontendni yiqitmasin; faqat autentifikatsiya endpointi ishlamasin.
+  if (!googleClient) return response.status(503).json({ error: 'GOOGLE_CLIENT_ID serverda sozlanmagan.' });
   // Authorization headerini olamiz.
   const authorization = request.get('authorization') || '';
   // Faqat Bearer sxemasidagi tokenni qabul qilamiz.
