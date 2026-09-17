@@ -112,12 +112,34 @@ function decodeJwtPayload(token) {
 }
 
 // Google Identity Services muvaffaqiyatli login qaytargan callback.
-function handleCredentialResponse(response) {
+async function restoreGoogleNickname() {
+  if (!googleIdToken) return;
+  try {
+    const response = await fetch(`${API_BASE}/api/leaderboard/me`, {
+      headers: { Authorization: `Bearer ${googleIdToken}` },
+    });
+    if (!response.ok) return;
+    const { nickname: savedNickname } = await response.json();
+    if (!savedNickname) return;
+    nickname = savedNickname;
+    localStorage.setItem('reaction-nickname', nickname);
+    if (!usedNicknames.some((usedNickname) => usedNickname.toLowerCase() === nickname.toLowerCase())) {
+      usedNicknames.push(nickname);
+      localStorage.setItem('reaction-used-nicknames', JSON.stringify(usedNicknames));
+    }
+    showNicknameGate();
+  } catch (error) {
+    console.error('Google nikini tiklashda xato:', error);
+  }
+}
+
+async function handleCredentialResponse(response) {
   googleIdToken = response.credential;
   sessionStorage.setItem('google-id-token', googleIdToken);
   const payload = decodeJwtPayload(googleIdToken);
   googleSignInDiv.style.display = 'none';
   authNote.textContent = `Google: ${payload.name || payload.email || 'akkaunt'} ulandi. Natijalar global reytingga yuboriladi.`;
+  await restoreGoogleNickname();
   fetchLeaderboard();
 }
 
@@ -134,6 +156,7 @@ function initGoogleSignIn() {
     const payload = decodeJwtPayload(googleIdToken);
     googleSignInDiv.style.display = 'none';
     authNote.textContent = `Google: ${payload.name || payload.email || 'akkaunt'} ulandi. Natijalar global reytingga yuboriladi.`;
+    restoreGoogleNickname();
   }
 }
 

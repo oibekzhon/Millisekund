@@ -208,6 +208,16 @@ app.get('/api/leaderboard', async (request, response, next) => {
   }
 });
 
+// Google akkauntiga avval biriktirilgan nikni qaytaruvchi endpoint.
+app.get('/api/leaderboard/me', requireGoogleUser, async (request, response, next) => {
+  try {
+    const nickname = await redis.hGet(USER_NICKNAMES_KEY, request.user.id);
+    return response.json({ nickname: nickname || null });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // Faqat Google bilan kirgan foydalanuvchining yangi rekordini saqlovchi endpoint.
 app.post('/api/leaderboard/submit', requireGoogleUser, rateLimit({ windowMs: 60 * 1000, limit: Number(process.env.SUBMIT_RATE_LIMIT || 30), standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
   // Validatsiya va Redis amallarini bitta try blokida boshqaramiz.
