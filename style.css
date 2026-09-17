@@ -61,9 +61,9 @@ h1 em { color: var(--orange); font-style: normal; }
 .stage-corner-bottom { right: 24px; bottom: 24px; }
 .test-stage.counting { background: #2e3945; }
 .test-stage.counting .stage-value { animation: count-pop 500ms ease both; }
-.test-stage.ready { border-color: var(--green); background: var(--green); color: #102016; }
-.test-stage.ready .stage-kicker, .test-stage.ready .stage-message, .test-stage.ready .stage-corner { color: rgba(16, 32, 22, 0.65); }
-.test-stage.ready .stage-value { color: #102016; }
+.test-stage.ready { border-color: var(--orange); background: #2f3540; }
+.test-stage.ready .stage-kicker, .test-stage.ready .stage-message, .test-stage.ready .stage-corner { color: rgba(244, 240, 232, 0.72); }
+.test-stage.ready .stage-value { color: var(--orange); }
 .test-stage.result { background: #22314a; }
 .test-stage.timeout { background: var(--orange); }
 .test-stage.timeout .stage-value, .test-stage.timeout .stage-kicker, .test-stage.timeout .stage-message { color: var(--navy); }

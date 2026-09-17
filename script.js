@@ -13,18 +13,13 @@ const showMoreButton = document.querySelector('#showMoreButton');
 const nicknameOverlay = document.querySelector('#nicknameOverlay');
 const nicknameForm = document.querySelector('#nicknameForm');
 const nicknameInput = document.querySelector('#nicknameInput');
+const passwordInput = document.querySelector('#passwordInput');
 const nicknameError = document.querySelector('#nicknameError');
-const googleSignInDiv = document.querySelector('#googleSignInDiv');
-const authNote = document.querySelector('#authNote');
 
-// GitHub Pages frontend'i API uchun Vercel deploy'iga, Vercel frontend'i esa same-origin API'ga murojaat qiladi.
 const API_BASE = window.location.hostname.endsWith('github.io')
   ? 'https://millisekund.vercel.app'
   : '';
-console.info('[Millisekund] Google OAuth origin:', window.location.origin, 'client:', window.GOOGLE_CLIENT_ID || 'not loaded');
-// Google ID tokenini shu seans davomida saqlaymiz (sahifa yopilsa yo'qoladi).
-let googleIdToken = sessionStorage.getItem('google-id-token') || '';
-// Global rejim faol bo'lsa, reyting backend'dan olinadi.
+let sessionToken = localStorage.getItem('millisekund-session') || '';
 let isGlobalMode = false;
 let leaderboardOffset = 0;
 
@@ -38,8 +33,7 @@ let best = Number(localStorage.getItem('reaction-best') || 0);
 let nickname = localStorage.getItem('reaction-nickname') || '';
 let leaderboard = JSON.parse(localStorage.getItem('reaction-leaderboard') || '[]');
 let usedNicknames = JSON.parse(localStorage.getItem('reaction-used-nicknames') || '[]');
-// Token mavjud bo'lsa, eski brauzer nickname'iga emas, serverdagi profilga ishonamiz.
-if (googleIdToken) nickname = '';
+if (sessionToken) nickname = localStorage.getItem('reaction-nickname') || '';
 
 function formatUnits(nanoseconds) {
   const exactNanoseconds = BigInt(nanoseconds);
@@ -77,18 +71,16 @@ function renderLeaderboard(rows, current = null, append = false) {
   currentNickname.textContent = nickname ? `@${nickname}` : '@nik';
 }
 
-// Global reytingni backend'dan olib, mavjud formatga moslab chizamiz.
 async function fetchLeaderboard() {
   try {
     leaderboardOffset = 0;
-    const response = await fetch(`${API_BASE}/api/leaderboard?limit=10&offset=0`, { headers: googleIdToken ? { Authorization: `Bearer ${googleIdToken}` } : {} });
+    const response = await fetch(`${API_BASE}/api/leaderboard?limit=10&offset=0`, { headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {} });
     if (!response.ok) throw new Error('leaderboard fetch failed');
     const { data, current, hasMore } = await response.json();
     isGlobalMode = true;
     renderLeaderboard(data, current);
     showMoreButton.hidden = !hasMore;
   } catch (error) {
-    // Backend mavjud bo'lmasa (masalan lokal statik rejim), lokal reytingga qaytamiz.
     isGlobalMode = false;
     showMoreButton.hidden = true;
     renderLeaderboard();
@@ -99,7 +91,7 @@ async function loadMoreLeaderboard() {
   showMoreButton.disabled = true;
   try {
     leaderboardOffset += 10;
-    const response = await fetch(`${API_BASE}/api/leaderboard?limit=10&offset=${leaderboardOffset}`, { headers: googleIdToken ? { Authorization: `Bearer ${googleIdToken}` } : {} });
+    const response = await fetch(`${API_BASE}/api/leaderboard?limit=10&offset=${leaderboardOffset}`, { headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {} });
     if (!response.ok) throw new Error('leaderboard pagination failed');
     const { data, current, hasMore } = await response.json();
     renderLeaderboard(data, current, true);
@@ -112,13 +104,12 @@ async function loadMoreLeaderboard() {
   }
 }
 
-// Reaksiya natijasini Google akkaunt bilan bog'langan global reytingga yuboramiz.
 async function submitToGlobalLeaderboard(elapsedNs) {
-  if (!googleIdToken || !nickname) return;
+  if (!sessionToken || !nickname) return;
   try {
     const response = await fetch(`${API_BASE}/api/leaderboard/submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${googleIdToken}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
       body: JSON.stringify({ nickname, elapsedNs: elapsedNs.toString() }),
     });
     const payload = await response.json();
@@ -132,67 +123,8 @@ async function submitToGlobalLeaderboard(elapsedNs) {
   }
 }
 
-// Base64url JWT payload'ini xavfsiz tarzda (faqat ko'rsatish uchun) dekodlaymiz.
-function decodeJwtPayload(token) {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(decodeURIComponent(escape(atob(base64))));
-  } catch (error) {
-    return {};
-  }
-}
-
-// Google Identity Services muvaffaqiyatli login qaytargan callback.
-async function restoreGoogleNickname() {
-  if (!googleIdToken) return;
-  try {
-    const response = await fetch(`${API_BASE}/api/leaderboard/me`, {
-      headers: { Authorization: `Bearer ${googleIdToken}` },
-    });
-    if (!response.ok) return;
-    const { nickname: savedNickname } = await response.json();
-    if (!savedNickname) return;
-    nickname = savedNickname;
-    localStorage.setItem('reaction-nickname', nickname);
-    if (!usedNicknames.some((usedNickname) => usedNickname.toLowerCase() === nickname.toLowerCase())) {
-      usedNicknames.push(nickname);
-      localStorage.setItem('reaction-used-nicknames', JSON.stringify(usedNicknames));
-    }
-    showNicknameGate();
-  } catch (error) {
-    console.error('Google nikini tiklashda xato:', error);
-  }
-}
-
-async function handleCredentialResponse(response) {
-  googleIdToken = response.credential;
-  sessionStorage.setItem('google-id-token', googleIdToken);
-  const payload = decodeJwtPayload(googleIdToken);
-  googleSignInDiv.style.display = 'none';
-  authNote.textContent = `Google: ${payload.name || payload.email || 'akkaunt'} ulandi. Natijalar global reytingga yuboriladi.`;
-  await restoreGoogleNickname();
-  fetchLeaderboard();
-}
-
-// Google Identity Services skripti yuklanishini kutib, tugmani chizamiz.
-function initGoogleSignIn() {
-  if (!window.google || !window.GOOGLE_CLIENT_ID) {
-    setTimeout(initGoogleSignIn, 300);
-    return;
-  }
-  google.accounts.id.initialize({ client_id: window.GOOGLE_CLIENT_ID, callback: handleCredentialResponse, auto_select: false });
-  google.accounts.id.renderButton(googleSignInDiv, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 320 });
-  // Sahifa qayta ochilganda avvalgi tokenni ko'rsatish uchun.
-  if (googleIdToken) {
-    const payload = decodeJwtPayload(googleIdToken);
-    googleSignInDiv.style.display = 'none';
-    authNote.textContent = `Google: ${payload.name || payload.email || 'akkaunt'} ulandi. Natijalar global reytingga yuboriladi.`;
-    restoreGoogleNickname();
-  }
-}
-
 function showNicknameGate() {
-  if (nickname && googleIdToken) {
+  if (nickname && sessionToken) {
     nicknameOverlay.hidden = true;
     renderLeaderboard();
     return;
@@ -244,7 +176,6 @@ function startCountdown() {
 function handleResponse() {
   const rawMs = performance.now() - greenAt;
   const result = Math.round(rawMs);
-  // Aniq breakdown va backend'ga yuborish uchun bitta haqiqiy nanosekund qiymatini hisoblaymiz (yaxlitlangan ms'dan emas).
   const preciseNs = Math.max(1, Math.round(rawMs * 1_000_000));
   state = 'result';
   clearTimeout(responseTimer);
@@ -252,7 +183,6 @@ function handleResponse() {
   best = best === 0 ? result : Math.min(best, result);
   localStorage.setItem('reaction-attempts', attempts);
   localStorage.setItem('reaction-best', best);
-  // Lokal (bu qurilmadagi) reytingni har doim yangilab boramiz, global rejim mavjud bo'lmasa ham ishlashi uchun.
   const existingEntry = leaderboard.find((entry) => entry.nickname === nickname);
   if (existingEntry) {
     existingEntry.nanoseconds = getNanoseconds(existingEntry) > preciseNs ? preciseNs.toString() : getNanoseconds(existingEntry).toString();
@@ -262,8 +192,7 @@ function handleResponse() {
   conversionResult.innerHTML = formatUnits(preciseNs);
   setStage({ mode: 'result', kicker: 'NATIJA', value: `${result} ms`, message: 'Qayta sinash uchun Space bosing' });
   updateStats();
-  // Google bilan ulangan bo'lsa, xuddi shu aniq nanosekund qiymatini global reytingga yuboramiz.
-  if (googleIdToken) {
+  if (sessionToken) {
     submitToGlobalLeaderboard(BigInt(preciseNs));
   } else if (isGlobalMode) {
     fetchLeaderboard();
@@ -308,12 +237,36 @@ resetButton.addEventListener('click', () => {
 
 nicknameForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  nicknameError.textContent = 'Google akkaunt orqali kiring.';
+  authenticate();
 });
 
 showMoreButton.addEventListener('click', loadMoreLeaderboard);
 
 updateStats();
 showNicknameGate();
+async function authenticate() {
+  nicknameError.textContent = '';
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: nicknameInput.value.trim(), password: passwordInput.value }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      nicknameError.textContent = payload.error || 'Kirish amalga oshmadi.';
+      return;
+    }
+    sessionToken = payload.token;
+    nickname = payload.nickname;
+    localStorage.setItem('millisekund-session', sessionToken);
+    localStorage.setItem('reaction-nickname', nickname);
+    nicknameError.textContent = '';
+    showNicknameGate();
+    await fetchLeaderboard();
+  } catch (error) {
+    nicknameError.textContent = 'Server bilan bog\'lanib bo\'lmadi.';
+  }
+}
+
 fetchLeaderboard();
-initGoogleSignIn();

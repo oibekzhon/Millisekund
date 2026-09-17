@@ -10,7 +10,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body>
     <main class="app-shell">
@@ -89,17 +88,16 @@
       <form class="nickname-card" id="nicknameForm">
         <p class="eyebrow">Millisekund / Kirish</p>
         <h2 id="nicknameTitle">Yaxshi nik bilan kiring</h2>
-        <p>Google akkauntingiz tasdiqlangach, profil nomingizdan avtomatik nickname yaratiladi.</p>
-        <label for="nicknameInput" hidden>Nik</label>
-        <input id="nicknameInput" name="nickname" type="text" hidden />
+          <p>Nickname va parol bilan kiring. Yangi nik avtomatik ro'yxatdan o'tkaziladi.</p>
+        <label for="nicknameInput">Nik</label>
+        <input id="nicknameInput" name="nickname" type="text" minlength="3" maxlength="18" pattern="[A-Za-z0-9_]+" autocomplete="username" placeholder="masalan, tezkor_01" required />
+          <label for="passwordInput">Parol</label>
+          <input id="passwordInput" name="password" type="password" minlength="6" maxlength="128" autocomplete="current-password" placeholder="kamida 6 belgi" required />
         <p class="form-error" id="nicknameError" role="alert"></p>
-        <div id="googleSignInDiv" class="google-signin-slot"></div>
-        <small class="auth-note" id="authNote">Global reytingga kirish uchun Google bilan kiring.</small>
+          <button class="primary-button" type="submit">Kirish / Ro'yxatdan o'tish <span aria-hidden="true">→</span></button>
+          <small class="auth-note" id="authNote">Mavjud nik bo'lsa kirasiz, yangi nik bo'lsa akkaunt yaratiladi.</small>
       </form>
     </div>
-    <script>
-      window.GOOGLE_CLIENT_ID = '766862887081-0pb0vj4293njgls60175g0q2675v6hqa.apps.googleusercontent.com';
-    </script>
     <script src="script.js"></script>
   </body>
 </html>

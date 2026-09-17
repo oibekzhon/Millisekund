@@ -4,8 +4,8 @@
 
 ```mermaid
 flowchart LR
-  A[Browser / Google Sign-In] -->|Bearer ID Token + elapsedNs| B[Express API]
-  B --> C[Google OAuth2 verifyIdToken]
+  A[Browser / Nickname + Password] -->|Session Token + elapsedNs| B[Express API]
+  B --> C[Session validation]
   C --> D[Zod validation + rate limit]
   D --> E[PostgreSQL best-score upsert]
   E --> F[users: Google subject + nickname]
@@ -13,10 +13,10 @@ flowchart LR
   G --> H[GET /api/leaderboard top 10 + personal rank]
 ```
 
-1. Frontend Google orqali ID token oladi va `Authorization: Bearer <token>` headerida yuboradi.
-2. Backend token imzosini Google public key, issuer va `GOOGLE_CLIENT_ID` audience orqali tekshiradi.
+1. Frontend nickname va parol bilan session token oladi va `Authorization: Bearer <token>` headerida yuboradi.
+2. Backend session token hashini PostgreSQL orqali tekshiradi.
 3. `elapsedNs` JSON'da string bo'ladi, chunki JavaScript `Number` nanosekund aniqligini 2^53 dan keyin yo'qotadi.
-4. Railway PostgreSQL foydalanuvchini Google `sub` ID orqali bir marta yaratadi va profil nickname'ini saqlaydi.
+4. Railway PostgreSQL foydalanuvchini nickname orqali bir marta yaratadi va parol hashini saqlaydi.
 5. SQL `ON CONFLICT ... WHERE` faqat yaxshiroq natijani saqlaydi; har bir urinish alohida yozilmaydi.
 6. GET endpoint top-10, `current` shaxsiy o'rin va offset pagination ma'lumotini qaytaradi.
 
@@ -25,7 +25,7 @@ flowchart LR
 ```powershell
 npm install
 Copy-Item .env.example .env
-# .env ichiga Google Web OAuth Client ID va Railway DATABASE_URL kiriting
+# .env ichiga Railway DATABASE_URL kiriting
 npm start
 ```
 
@@ -50,7 +50,7 @@ Body:
 }
 ```
 
-`elapsedNs` string bo'lishi shart. `1002024` ns = `1` ms, `1002` microsekund va `1002024` nanosekund. Nickname Google profil nomidan avtomatik yaratiladi. Har bir Google subject faqat o'zining eng yaxshi rekordini saqlay oladi.
+`elapsedNs` string bo'lishi shart. `1002024` ns = `1` ms, `1002` microsekund va `1002024` nanosekund. Har bir nickname faqat o'zining eng yaxshi rekordini saqlay oladi.
 
 ### `GET /api/leaderboard?limit=10&offset=0`
 
