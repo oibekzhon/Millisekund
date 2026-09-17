@@ -42,7 +42,10 @@ function readStorageJson(key, fallback = []) {
 function toBigIntSafe(value, fallback = 0n) {
   if (typeof value === 'bigint') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return BigInt(Math.max(0, Math.round(value)));
-  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return BigInt(value.trim());
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(/,/g, '');
+    if (/^\d+$/.test(normalized)) return BigInt(normalized);
+  }
   return fallback;
 }
 
@@ -101,10 +104,8 @@ function getNanoseconds(entry) {
 
 function formatLeaderboardTime(nanoseconds) {
   const exactNanoseconds = toBigIntSafe(nanoseconds, 0n);
-  const millisecondsValue = Number(exactNanoseconds) / 1_000_000;
-  const microsecondsValue = Number(exactNanoseconds) / 1_000;
-  const millisecondsText = formatFixedDecimal(millisecondsValue, 3);
-  const microsecondsText = formatFixedDecimal(microsecondsValue, 6);
+  const millisecondsText = formatWithGrouping((exactNanoseconds / 1_000_000n).toString());
+  const microsecondsText = formatWithGrouping((exactNanoseconds / 1_000n).toString());
   const nanosecondsText = formatNanoseconds(exactNanoseconds);
 
   return `<strong>${millisecondsText}<small> ms</small></strong><span>${microsecondsText} µs · ${nanosecondsText} ns</span>`;
