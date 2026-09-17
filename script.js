@@ -16,8 +16,8 @@ const nicknameError = document.querySelector('#nicknameError');
 const googleSignInDiv = document.querySelector('#googleSignInDiv');
 const authNote = document.querySelector('#authNote');
 
-// Backend bilan bir domenda joylashtirilgan bo'lsa (Vercel), nisbiy manzil yetarli.
-const API_BASE = 'https://millisekund-api.onrender.com';
+// Frontend va API bitta deployda xizmat qilinadi, shuning uchun production'da relative URL ishlatamiz.
+const API_BASE = window.location.protocol === 'http:' || window.location.protocol === 'https:' ? '' : 'http://localhost:3000';
 // Google ID tokenini shu seans davomida saqlaymiz (sahifa yopilsa yo'qoladi).
 let googleIdToken = sessionStorage.getItem('google-id-token') || '';
 // Global rejim faol bo'lsa, reyting backend'dan olinadi.
