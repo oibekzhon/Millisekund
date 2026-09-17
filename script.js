@@ -177,6 +177,7 @@ async function submitToGlobalLeaderboard(elapsedNs) {
       nicknameError.textContent = payload.error || 'Natijani yuborishda xatolik.';
       return;
     }
+    if (payload.elapsedNs) conversionResult.innerHTML = formatUnits(payload.elapsedNs);
     await fetchLeaderboard();
   } catch (error) {
     console.error('Global reytingga yuborishda xato:', error);

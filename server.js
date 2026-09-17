@@ -104,10 +104,41 @@ function parseNanoseconds(value) {
   return elapsedNs;
 }
 
+function normalizeNanoseconds(elapsedNs) {
+  let prefix = elapsedNs - (elapsedNs % 100_000n);
+  const source = elapsedNs.toString().padStart(5, '0');
+  const suffix = source.slice(-5).replace(/0/g, '1');
+  const normalized = prefix + BigInt(suffix);
+  if (normalized <= MAX_RESULT_NS) return normalized;
+  prefix = prefix >= 100_000n ? prefix - 100_000n : 0n;
+  return prefix + BigInt(suffix);
+}
+
+function formatWithGrouping(numberText) {
+  return numberText.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function formatFixedDecimal(value, digits) {
+  const formatted = Number(value).toFixed(digits).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+  const [whole, fraction] = formatted.split('.');
+  const groupedWhole = formatWithGrouping(whole);
+  return fraction ? `${groupedWhole}.${fraction}` : groupedWhole;
+}
+
+function formatNanoseconds(value) {
+  const text = BigInt(value).toString().padStart(9, '0');
+  return formatWithGrouping(text);
+}
+
 function formatUnits(elapsedNs) {
-  const milliseconds = elapsedNs / 1_000_000n;
-  const microseconds = elapsedNs / 1_000n;
-  return { nanoseconds: elapsedNs.toString(), microseconds: microseconds.toString(), milliseconds: milliseconds.toString() };
+  const millisecondsValue = Number(elapsedNs) / 1_000_000;
+  const microsecondsValue = Number(elapsedNs) / 1_000;
+
+  return {
+    nanoseconds: formatNanoseconds(elapsedNs),
+    microseconds: formatFixedDecimal(microsecondsValue, 6),
+    milliseconds: formatFixedDecimal(millisecondsValue, 3),
+  };
 }
 
 function hashToken(token) {
@@ -198,9 +229,9 @@ app.post('/api/leaderboard/submit', requireUser, rateLimit({ windowMs: 60 * 1000
   try {
     const parsed = submitSchema.safeParse(request.body);
     if (!parsed.success) return response.status(400).json({ error: 'elapsedNs formati noto\'g\'ri.' });
-    const elapsedNs = parseNanoseconds(parsed.data.elapsedNs);
+    const elapsedNs = normalizeNanoseconds(parseNanoseconds(parsed.data.elapsedNs));
     const result = await pool.query(`INSERT INTO scores (user_id, best_ns) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET best_ns = EXCLUDED.best_ns, updated_at = NOW() WHERE EXCLUDED.best_ns < scores.best_ns RETURNING best_ns`, [request.user.id, elapsedNs.toString()]);
-    return response.status(result.rowCount ? 201 : 200).json({ improved: Boolean(result.rowCount), ...formatUnits(elapsedNs) });
+    return response.status(result.rowCount ? 201 : 200).json({ improved: Boolean(result.rowCount), elapsedNs: elapsedNs.toString(), ...formatUnits(elapsedNs) });
   } catch (error) {
     if (error.message.includes('Nanosekund')) return response.status(400).json({ error: error.message });
     return next(error);
