@@ -20,6 +20,32 @@ const nicknameError = document.querySelector('#nicknameError');
 const API_BASE = window.location.hostname.endsWith('github.io')
   ? 'https://millisekund.vercel.app'
   : '';
+
+function readStorageNumber(key, fallback = 0) {
+  const rawValue = localStorage.getItem(key);
+  const value = Number(rawValue || fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function readStorageJson(key, fallback = []) {
+  const rawValue = localStorage.getItem(key);
+  if (!rawValue) return fallback;
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (error) {
+    console.warn(`Kutilmagan JSON ${key} ma'lumotlari:`, error);
+    return fallback;
+  }
+}
+
+function toBigIntSafe(value, fallback = 0n) {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return BigInt(Math.max(0, Math.round(value)));
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return BigInt(value.trim());
+  return fallback;
+}
+
 let sessionToken = localStorage.getItem('millisekund-session') || '';
 let isGlobalMode = false;
 let leaderboardOffset = 0;
@@ -29,40 +55,55 @@ let state = 'idle';
 let countdownTimer;
 let responseTimer;
 let greenAt = 0;
-let attempts = Number(localStorage.getItem('reaction-attempts') || 0);
-let best = Number(localStorage.getItem('reaction-best') || 0);
+let attempts = readStorageNumber('reaction-attempts', 0);
+let best = readStorageNumber('reaction-best', 0);
 let nickname = localStorage.getItem('reaction-nickname') || '';
-let leaderboard = JSON.parse(localStorage.getItem('reaction-leaderboard') || '[]');
-let usedNicknames = JSON.parse(localStorage.getItem('reaction-used-nicknames') || '[]');
+let leaderboard = readStorageJson('reaction-leaderboard', []);
+let usedNicknames = readStorageJson('reaction-used-nicknames', []);
 if (sessionToken) nickname = localStorage.getItem('reaction-nickname') || '';
 
-function formatUnits(nanoseconds) {
-  const exactNanoseconds = BigInt(nanoseconds);
-  const milliseconds = exactNanoseconds / 1_000_000n;
-  const microseconds = exactNanoseconds / 1_000n;
-  return `<strong>${milliseconds.toLocaleString('uz-UZ')} ms</strong><span>${microseconds.toLocaleString('uz-UZ')} mikrosekund</span><span>${exactNanoseconds.toLocaleString('uz-UZ')} nanosekund</span>`;
+function formatFixedDecimal(value, digits) {
+  return Number(value).toFixed(digits).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
 }
 
-function measureNanoseconds(startTime) {
-  return BigInt(Math.max(1, Math.round((performance.now() - startTime) * 1_000_000)));
+function formatUnits(nanoseconds) {
+  const exactNanoseconds = toBigIntSafe(nanoseconds, 0n);
+  const millisecondsValue = Number(exactNanoseconds) / 1_000_000;
+  const microsecondsValue = Number(exactNanoseconds) / 1_000;
+  const millisecondsText = formatFixedDecimal(millisecondsValue, 3);
+  const microsecondsText = formatFixedDecimal(microsecondsValue, 6);
+  const nanosecondsText = formatFixedDecimal(Number(exactNanoseconds), 9);
+
+  return `<strong>${millisecondsText} ms</strong><span>${microsecondsText} mikrosekund</span><span>${nanosecondsText} nanosekund</span>`;
+}
+
+function measureNanoseconds(startTime, eventTimeStamp) {
+  const endTime = Number.isFinite(eventTimeStamp) && eventTimeStamp > startTime ? eventTimeStamp : performance.now();
+  return BigInt(Math.max(1, Math.round((endTime - startTime) * 1_000_000)));
 }
 
 function getNanoseconds(entry) {
-  if (entry.nanoseconds !== undefined) return BigInt(entry.nanoseconds);
-  return BigInt(Math.max(1, Math.round(entry.score * 1_000_000)));
+  if (!entry || typeof entry !== 'object') return 1n;
+  if (entry.nanoseconds !== undefined) return toBigIntSafe(entry.nanoseconds, 1n);
+  if (entry.score !== undefined) return toBigIntSafe(entry.score, 1n) * 1_000_000n;
+  return 1n;
 }
 
 function formatLeaderboardTime(nanoseconds) {
-  const exactNanoseconds = BigInt(nanoseconds);
-  const milliseconds = exactNanoseconds / 1_000_000n;
-  const microseconds = exactNanoseconds / 1_000n;
-  return `<strong>${milliseconds.toLocaleString('uz-UZ')}<small> ms</small></strong><span>${microseconds.toLocaleString('uz-UZ')} µs · ${exactNanoseconds.toLocaleString('uz-UZ')} ns</span>`;
+  const exactNanoseconds = toBigIntSafe(nanoseconds, 0n);
+  const millisecondsValue = Number(exactNanoseconds) / 1_000_000;
+  const microsecondsValue = Number(exactNanoseconds) / 1_000;
+  const millisecondsText = formatFixedDecimal(millisecondsValue, 3);
+  const microsecondsText = formatFixedDecimal(microsecondsValue, 6);
+  const nanosecondsText = formatFixedDecimal(Number(exactNanoseconds), 9);
+
+  return `<strong>${millisecondsText}<small> ms</small></strong><span>${microsecondsText} µs · ${nanosecondsText} ns</span>`;
 }
 
 function renderLeaderboard(rows, current = null, append = false) {
-  const sorted = rows || [...leaderboard].sort((left, right) => Number(getNanoseconds(left) - getNanoseconds(right))).slice(0, 10);
+  const safeRows = Array.isArray(rows) ? rows : [...leaderboard].filter((entry) => entry && entry.nickname).sort((left, right) => Number(getNanoseconds(left) - getNanoseconds(right))).slice(0, 10);
   if (append) leaderboardList.querySelector('.personal-rank')?.remove();
-  const html = sorted.length ? sorted.map((entry, index) => `
+  const html = safeRows.length ? safeRows.map((entry, index) => `
     <li class="leaderboard-row ${entry.nickname === nickname ? 'is-current' : ''}">
       <span class="rank">${String(entry.rank || index + 1).padStart(2, '0')}</span>
       <span class="leader-name">@${entry.nickname}</span>
@@ -70,8 +111,8 @@ function renderLeaderboard(rows, current = null, append = false) {
     </li>`).join('') : '<li class="empty-row">Hali natija yo\'q. Birinchi bo\'lib o\'zingizni sinang.</li>';
   if (append) leaderboardList.insertAdjacentHTML('beforeend', html);
   else leaderboardList.innerHTML = html;
-  if (current && current.rank > 10 && !sorted.some((entry) => entry.nickname === current.nickname)) {
-    leaderboardList.insertAdjacentHTML('beforeend', `<li class="leaderboard-row is-current personal-rank"><span class="rank">${current.rank}</span><span class="leader-name">@${current.nickname}</span><span class="leader-time">${formatLeaderboardTime(getNanoseconds(current))}</span></li>`);
+  if (current && Number(current.rank) > 10 && !safeRows.some((entry) => entry.nickname === current.nickname)) {
+    leaderboardList.insertAdjacentHTML('beforeend', `<li class="leaderboard-row is-current personal-rank"><span class="rank">${Number(current.rank)}</span><span class="leader-name">@${current.nickname}</span><span class="leader-time">${formatLeaderboardTime(getNanoseconds(current))}</span></li>`);
   }
   currentNickname.textContent = nickname ? `@${nickname}` : '@nik';
 }
@@ -199,8 +240,8 @@ function startCountdown() {
   }, 1000);
 }
 
-function handleResponse() {
-  const preciseNs = measureNanoseconds(greenAt);
+function handleResponse(eventTimeStamp) {
+  const preciseNs = measureNanoseconds(greenAt, eventTimeStamp);
   const result = Number(preciseNs / 1_000_000n);
   state = 'result';
   clearTimeout(responseTimer);
@@ -208,11 +249,18 @@ function handleResponse() {
   best = best === 0 ? result : Math.min(best, result);
   localStorage.setItem('reaction-attempts', attempts);
   localStorage.setItem('reaction-best', best);
-  const existingEntry = leaderboard.find((entry) => entry.nickname === nickname);
-  if (existingEntry) {
-    existingEntry.nanoseconds = getNanoseconds(existingEntry) > preciseNs ? preciseNs.toString() : getNanoseconds(existingEntry).toString();
-  } else leaderboard.push({ nickname, nanoseconds: preciseNs.toString() });
-  localStorage.setItem('reaction-leaderboard', JSON.stringify(leaderboard));
+
+  if (nickname) {
+    const existingEntry = leaderboard.find((entry) => entry && entry.nickname === nickname);
+    if (existingEntry) {
+      const currentBestNs = getNanoseconds(existingEntry);
+      existingEntry.nanoseconds = currentBestNs > preciseNs ? preciseNs.toString() : currentBestNs.toString();
+    } else {
+      leaderboard.push({ nickname, nanoseconds: preciseNs.toString() });
+    }
+    localStorage.setItem('reaction-leaderboard', JSON.stringify(leaderboard));
+  }
+
   lastResult.innerHTML = `${result}<small> ms</small>`;
   conversionResult.innerHTML = formatUnits(preciseNs);
   setStage({ mode: 'result', kicker: 'NATIJA', value: `${result} ms`, message: 'Qayta sinash uchun Space bosing' });
@@ -230,18 +278,18 @@ function handleTimeout() {
   responseTimer = setTimeout(showIdle, 2200);
 }
 
-function handleSpace() {
+function handleSpace(eventTimeStamp) {
   if (state === 'idle' || state === 'result' || state === 'timeout') {
     startCountdown();
   } else if (state === 'ready') {
-    handleResponse();
+    handleResponse(eventTimeStamp);
   }
 }
 
 document.addEventListener('keydown', (event) => {
   if (event.code !== 'Space' || !nicknameOverlay.hidden) return;
   event.preventDefault();
-  handleSpace();
+  handleSpace(event.timeStamp);
 });
 
 testStage.addEventListener('click', () => {
