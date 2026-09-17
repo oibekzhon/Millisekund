@@ -27,8 +27,11 @@ const PORT = Number(process.env.PORT || 3000);
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 // Google OAuth client ID'si ID token audience'i bilan aynan bir xil bo'lishi kerak.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-// Frontend originini wildcard emas, aniq qiymat sifatida qabul qilamiz.
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+// Frontend originlarini wildcard emas, vergul bilan ajratilgan aniq ro'yxat sifatida qabul qilamiz.
+const CORS_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 // Bir rekord uchun maksimal ruxsat etilgan vaqtni BigInt ko'rinishida saqlaymiz.
 const MAX_RESULT_NS = BigInt(process.env.MAX_RESULT_NS || '60000000000');
 // Redis ZSET member'ining lexicographic tartibi uchun 30 xonali fixed-width format yetarli.
@@ -63,8 +66,14 @@ app.use(helmet({
     },
   },
 }));
-// Faqat konfiguratsiyada ko'rsatilgan frontend originiga ruxsat beramiz.
-app.use(cors({ origin: CORS_ORIGIN }));
+// Har bir so'rov uchun faqat bitta mos originni qaytaramiz; brauzer bir nechta
+// Access-Control-Allow-Origin qiymatini qabul qilmaydi.
+app.use(cors({
+  origin: (requestOrigin, callback) => {
+    if (!requestOrigin || CORS_ORIGINS.includes(requestOrigin)) return callback(null, true);
+    return callback(new Error('Origin CORS ro\'yxatida yo\'q.'));
+  },
+}));
 // JSON body hajmini kichik qilib, keraksiz katta payloadlarni rad qilamiz.
 app.use(express.json({ limit: '8kb' }));
 // Barcha API'lar uchun umumiy so'rov tezligini cheklaymiz.
