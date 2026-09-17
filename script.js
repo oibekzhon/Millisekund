@@ -62,8 +62,15 @@ let leaderboard = readStorageJson('reaction-leaderboard', []);
 let usedNicknames = readStorageJson('reaction-used-nicknames', []);
 if (sessionToken) nickname = localStorage.getItem('reaction-nickname') || '';
 
+function formatWithGrouping(numberText) {
+  return numberText.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 function formatFixedDecimal(value, digits) {
-  return Number(value).toFixed(digits).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+  const formatted = Number(value).toFixed(digits).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+  const [whole, fraction] = formatted.split('.');
+  const groupedWhole = formatWithGrouping(whole);
+  return fraction ? `${groupedWhole}.${fraction}` : groupedWhole;
 }
 
 function formatUnits(nanoseconds) {
