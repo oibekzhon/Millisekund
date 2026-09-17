@@ -125,18 +125,14 @@ function formatFixedDecimal(value, digits) {
 }
 
 function formatNanoseconds(value) {
-  const text = BigInt(value).toString().padStart(9, '0');
-  return formatWithGrouping(text);
+  return formatWithGrouping(BigInt(value).toString());
 }
 
 function formatUnits(elapsedNs) {
-  const millisecondsValue = Number(elapsedNs) / 1_000_000;
-  const microsecondsValue = Number(elapsedNs) / 1_000;
-
   return {
     nanoseconds: formatNanoseconds(elapsedNs),
-    microseconds: formatFixedDecimal(microsecondsValue, 6),
-    milliseconds: formatFixedDecimal(millisecondsValue, 3),
+    microseconds: formatWithGrouping((elapsedNs / 1_000n).toString()),
+    milliseconds: formatWithGrouping((elapsedNs / 1_000_000n).toString()),
   };
 }
 

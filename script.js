@@ -75,16 +75,13 @@ function formatFixedDecimal(value, digits) {
 
 function formatNanoseconds(value) {
   const raw = BigInt(value);
-  const text = raw.toString().padStart(9, '0');
-  return formatWithGrouping(text);
+  return formatWithGrouping(raw.toString());
 }
 
 function formatUnits(nanoseconds) {
   const exactNanoseconds = toBigIntSafe(nanoseconds, 0n);
-  const millisecondsValue = Number(exactNanoseconds) / 1_000_000;
-  const microsecondsValue = Number(exactNanoseconds) / 1_000;
-  const millisecondsText = formatFixedDecimal(millisecondsValue, 3);
-  const microsecondsText = formatFixedDecimal(microsecondsValue, 6);
+  const millisecondsText = formatWithGrouping((exactNanoseconds / 1_000_000n).toString());
+  const microsecondsText = formatWithGrouping((exactNanoseconds / 1_000n).toString());
   const nanosecondsText = formatNanoseconds(exactNanoseconds);
 
   return `<strong>${millisecondsText} ms</strong><span>${microsecondsText} mikrosekund</span><span>${nanosecondsText} nanosekund</span>`;
