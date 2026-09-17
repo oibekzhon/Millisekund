@@ -76,6 +76,7 @@
           <span id="currentNickname" class="nickname-badge">@nik</span>
         </div>
         <ol id="leaderboardList" class="leaderboard-list"></ol>
+        <button class="show-more-button" id="showMoreButton" type="button" hidden>Ko'proq</button>
       </section>
 
       <footer class="footer-note">
@@ -88,13 +89,12 @@
       <form class="nickname-card" id="nicknameForm">
         <p class="eyebrow">Millisekund / Kirish</p>
         <h2 id="nicknameTitle">Yaxshi nik bilan kiring</h2>
-        <p>Reyting doskasida sizni shu nik orqali taniymiz. Nik bir marta ishlatiladi.</p>
-        <label for="nicknameInput">Nik</label>
-        <input id="nicknameInput" name="nickname" type="text" minlength="3" maxlength="18" pattern="[A-Za-z0-9_]+" autocomplete="username" placeholder="masalan, tezkor_01" required />
+        <p>Google akkauntingiz tasdiqlangach, profil nomingizdan avtomatik nickname yaratiladi.</p>
+        <label for="nicknameInput" hidden>Nik</label>
+        <input id="nicknameInput" name="nickname" type="text" hidden />
         <p class="form-error" id="nicknameError" role="alert"></p>
-        <button class="primary-button" type="submit">Global reytingga kirish <span aria-hidden="true">→</span></button>
         <div id="googleSignInDiv" class="google-signin-slot"></div>
-        <small class="auth-note" id="authNote">Global reytingga chiqish uchun Google bilan kiring. Nik Google akkauntingizga biriktiriladi.</small>
+        <small class="auth-note" id="authNote">Global reytingga kirish uchun Google bilan kiring.</small>
       </form>
     </div>
     <script>

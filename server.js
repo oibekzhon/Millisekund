@@ -10,8 +10,8 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 // Google ID tokenlarini imzo va audience bo'yicha tekshiramiz.
 import { OAuth2Client } from 'google-auth-library';
-// Redis serveriga ulanish uchun rasmiy Redis klientini import qilamiz.
-import { createClient } from 'redis';
+// Railway PostgreSQL serveriga ulanish uchun rasmiy klientni import qilamiz.
+import pg from 'pg';
 // Kiruvchi JSON ma'lumotlarini qat'iy tekshirish uchun Zod ishlatamiz.
 import { z } from 'zod';
 // Statik fayllar papkasi manzilini hisoblash uchun kerak.
@@ -23,8 +23,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // HTTP portini konfiguratsiyadan olamiz.
 const PORT = Number(process.env.PORT || 3000);
-// Redis ulanish URL'sini konfiguratsiyadan olamiz.
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+// Railway PostgreSQL ulanish URL'sini konfiguratsiyadan olamiz.
+const DATABASE_URL = process.env.DATABASE_URL;
 // Google OAuth client ID'si ID token audience'i bilan aynan bir xil bo'lishi kerak.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 // Frontend originlarini wildcard emas, vergul bilan ajratilgan aniq ro'yxat sifatida qabul qilamiz.
@@ -34,24 +34,14 @@ const CORS_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:3000')
   .filter(Boolean);
 // Bir rekord uchun maksimal ruxsat etilgan vaqtni BigInt ko'rinishida saqlaymiz.
 const MAX_RESULT_NS = BigInt(process.env.MAX_RESULT_NS || '60000000000');
-// Redis ZSET member'ining lexicographic tartibi uchun 30 xonali fixed-width format yetarli.
-const NANOSECOND_WIDTH = 30;
-// Reyting ZSET kalitini bitta global nom bilan belgilaymiz.
-const LEADERBOARD_KEY = 'leaderboard:global:v1';
-// Foydalanuvchi rekordlari saqlanadigan Redis HASH kalitini belgilaymiz.
-const USER_RECORDS_KEY = 'leaderboard:user-records:v1';
-// Bitta Google subject'iga bitta nikni qat'iy bog'lash uchun Redis HASH kalitini belgilaymiz.
-const USER_NICKNAMES_KEY = 'leaderboard:user-nicknames:v1';
 
 // Express ilovasini yaratamiz.
 const app = express();
 // Google ID tokenlarini tekshiruvchi klientni yaratamiz.
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
-// Redis klientini konfiguratsiya qilamiz.
-const redis = createClient({ url: REDIS_URL });
-
-// Redis ulanish xatolarini log qilamiz.
-redis.on('error', (error) => console.error('Redis xatosi:', error));
+// Railway PostgreSQL klientini konfiguratsiya qilamiz.
+const { Pool } = pg;
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } }) : null;
 // Xavfsiz default headerlarini yoqamiz, lekin Google Identity Services va Google Fonts uchun ruxsat qo'shamiz.
 app.use(helmet({
   contentSecurityPolicy: {
@@ -81,25 +71,36 @@ app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8',
 // Frontend statik fayllarini (index.html, script.js, style.css) shu server orqali xizmat qilamiz.
 app.use(express.static(__dirname));
 
-// Redis'ga faqat bitta marta ulanishni ta'minlaydigan promise (serverless funksiya qayta-qayta chaqirilishi mumkin).
-let redisConnectPromise = null;
-function ensureRedisConnected() {
-  if (!redisConnectPromise) {
-    redisConnectPromise = redis.connect().catch((error) => {
-      redisConnectPromise = null;
-      throw error;
-    });
-  }
-  return redisConnectPromise;
+let databaseInitPromise = null;
+async function ensureDatabase() {
+  if (!pool) throw new Error('DATABASE_URL serverda sozlanmagan.');
+  if (!databaseInitPromise) databaseInitPromise = pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL DEFAULT '',
+      nickname TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS scores (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      best_ns NUMERIC(30, 0) NOT NULL CHECK (best_ns > 0 AND best_ns <= 60000000000),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS scores_best_ns_idx ON scores(best_ns);
+  `).catch((error) => {
+    databaseInitPromise = null;
+    throw error;
+  });
+  await databaseInitPromise;
 }
 
-// /api bilan boshlanuvchi har bir so'rovdan oldin Redis ulanganiga ishonch hosil qilamiz.
 app.use('/api', async (request, response, next) => {
   try {
-    await ensureRedisConnected();
+    await ensureDatabase();
     return next();
   } catch (error) {
-    return response.status(503).json({ error: 'Redis hozircha ishlamayapti.' });
+    console.error('Database ulanish xatosi:', error.message);
+    return response.status(503).json({ error: 'Database hozircha ishlamayapti.' });
   }
 });
 
@@ -132,8 +133,6 @@ async function requireGoogleUser(request, response, next) {
 
 // POST body uchun faqat decimal nanosekund stringini qabul qilamiz.
 const submitSchema = z.object({
-  // Nik global bo'lishi uchun uzunligi va belgilarini cheklaymiz.
-  nickname: z.string().trim().min(3).max(18).regex(/^[A-Za-z0-9_]+$/),
   // BigInt JSON orqali yuborilmagani uchun nanosekund string sifatida qabul qilinadi.
   elapsedNs: z.string().regex(/^\d+$/),
 });
@@ -148,12 +147,6 @@ function parseNanoseconds(value) {
   return elapsedNs;
 }
 
-// Nanosekundni Redis lexicographic tartibiga mos fixed-width qiymatga aylantiramiz.
-function encodeNanoseconds(elapsedNs) {
-  // Har bir member bir xil uzunlikda bo'lsa, Redis byte tartibi raqam tartibiga teng bo'ladi.
-  return elapsedNs.toString().padStart(NANOSECOND_WIDTH, '0');
-}
-
 // Nanosekundni foydalanuvchiga kerakli uch birlikka ajratamiz.
 function formatUnits(elapsedNs) {
   // Millisekundning butun qismi va qolgan nanosekundni ajratamiz.
@@ -164,97 +157,71 @@ function formatUnits(elapsedNs) {
   return { nanoseconds: elapsedNs.toString(), microseconds: microseconds.toString(), milliseconds: milliseconds.toString() };
 }
 
-// Rekordni faqat undan yaxshi bo'lsa almashtiradigan atomik Redis Lua skripti.
-const saveRecordScript = `
-local old = redis.call('HGET', KEYS[2], ARGV[1])
-local newMember = ARGV[2] .. ':' .. ARGV[1]
-if old and old <= ARGV[2] then
-  return 0
-end
-if old then
-  redis.call('ZREM', KEYS[1], old .. ':' .. ARGV[1])
-end
-redis.call('ZADD', KEYS[1], 0, newMember)
-redis.call('HSET', KEYS[2], ARGV[1], ARGV[2])
-return 1
-`;
+function makeNickname(name, email) {
+  const base = (name || email.split('@')[0] || 'player').normalize('NFKD').replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 14) || 'player';
+  return base.length >= 3 ? base : `${base}_01`;
+}
 
-// Yagona tartibdagi global top-100 reytingni qaytaruvchi endpoint.
-app.get('/api/leaderboard', async (request, response, next) => {
-  // Route ichidagi Redis xatolarini umumiy error handlerga yuboramiz.
+async function getOrCreateUser(user) {
+  const existing = await pool.query('SELECT id, email, nickname FROM users WHERE id = $1', [user.id]);
+  if (existing.rows[0]) return existing.rows[0];
+  const base = makeNickname(user.name, user.email);
+  for (let suffix = 0; suffix < 1000; suffix += 1) {
+    const nickname = suffix === 0 ? base : `${base.slice(0, 18 - String(suffix).length - 1)}_${suffix}`;
+    try {
+      const created = await pool.query('INSERT INTO users (id, email, nickname) VALUES ($1, $2, $3) RETURNING id, email, nickname', [user.id, user.email, nickname]);
+      return created.rows[0];
+    } catch (error) {
+      if (error.code !== '23505') throw error;
+      const concurrentUser = await pool.query('SELECT id, email, nickname FROM users WHERE id = $1', [user.id]);
+      if (concurrentUser.rows[0]) return concurrentUser.rows[0];
+    }
+  }
+  throw new Error('Avtomatik nickname yaratib bo\'lmadi.');
+}
+
+async function optionalGoogleUser(request, response, next) {
+  if (!request.get('authorization')) return next();
+  return requireGoogleUser(request, response, next);
+}
+
+app.get('/api/leaderboard', optionalGoogleUser, async (request, response, next) => {
   try {
-    // Barcha ZSET memberlarini score emas, lexicographic tartibda olamiz.
-    const members = await redis.sendCommand(['ZRANGE', LEADERBOARD_KEY, '-', '+', 'BYLEX', 'LIMIT', '0', '100']);
-    // Har bir member'dan foydalanuvchi ID va fixed-width nanosekundni ajratamiz.
-    const rows = await Promise.all(members.map(async (member, index) => {
-      // Member formatining oxirgi ':' belgisini ajratamiz.
-      const separator = member.lastIndexOf(':');
-      // Exact nanosekundni boshidagi nollardan tozalab BigInt'ga aylantiramiz.
-      const elapsedNs = BigInt(member.slice(0, separator));
-      // Google subjectini member'dan olamiz.
-      const userId = member.slice(separator + 1);
-      // Saqlangan foydalanuvchi rekordini HASH'dan olamiz.
-      const stored = await redis.hGet(USER_RECORDS_KEY, userId);
-      // Ma'lumot bo'lmasa ham reytingni buzmaslik uchun minimal fallback ishlatamiz.
-      const user = stored ? JSON.parse(stored) : { nickname: 'unknown' };
-      // Public API'ga faqat kerakli va xavfsiz maydonlarni chiqaramiz.
-      return { rank: index + 1, nickname: user.nickname, ...formatUnits(elapsedNs) };
-    }));
-    // Global top-100 ro'yxatni mijozga qaytaramiz.
-    return response.json({ data: rows });
+    const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '10', 10) || 10, 1), 1000);
+    const offset = Math.max(Number.parseInt(request.query.offset || '0', 10) || 0, 0);
+    const user = request.user ? await getOrCreateUser(request.user) : null;
+    const result = await pool.query(`SELECT ROW_NUMBER() OVER (ORDER BY s.best_ns ASC, u.nickname ASC) AS rank, u.id, u.nickname, s.best_ns FROM scores s JOIN users u ON u.id = s.user_id ORDER BY s.best_ns ASC, u.nickname ASC LIMIT $1 OFFSET $2`, [limit, offset]);
+    const total = await pool.query('SELECT COUNT(*)::int AS count FROM scores');
+    let current = null;
+    if (user) {
+      const currentResult = await pool.query(`SELECT u.nickname, s.best_ns, (SELECT COUNT(*) + 1 FROM scores better WHERE better.best_ns < s.best_ns) AS rank FROM scores s JOIN users u ON u.id = s.user_id WHERE s.user_id = $1`, [user.id]);
+      if (currentResult.rows[0]) current = { rank: Number(currentResult.rows[0].rank), nickname: currentResult.rows[0].nickname, ...formatUnits(BigInt(currentResult.rows[0].best_ns)) };
+    }
+    return response.json({ data: result.rows.map((row) => ({ rank: Number(row.rank), nickname: row.nickname, ...formatUnits(BigInt(row.best_ns)) })), current, total: total.rows[0].count, hasMore: offset + result.rows.length < total.rows[0].count });
   } catch (error) {
-    // Express error middleware'iga o'tamiz.
     return next(error);
   }
 });
 
-// Google akkauntiga avval biriktirilgan nikni qaytaruvchi endpoint.
 app.get('/api/leaderboard/me', requireGoogleUser, async (request, response, next) => {
   try {
-    const nickname = await redis.hGet(USER_NICKNAMES_KEY, request.user.id);
-    return response.json({ nickname: nickname || null });
+    const user = await getOrCreateUser(request.user);
+    return response.json({ nickname: user.nickname });
   } catch (error) {
     return next(error);
   }
 });
 
-// Faqat Google bilan kirgan foydalanuvchining yangi rekordini saqlovchi endpoint.
 app.post('/api/leaderboard/submit', requireGoogleUser, rateLimit({ windowMs: 60 * 1000, limit: Number(process.env.SUBMIT_RATE_LIMIT || 30), standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
-  // Validatsiya va Redis amallarini bitta try blokida boshqaramiz.
   try {
-    // Body tuzilishini tekshiramiz.
     const parsed = submitSchema.safeParse(request.body);
-    // Noto'g'ri body'ni Redis'ga yubormaymiz.
-    if (!parsed.success) return response.status(400).json({ error: "nickname va elapsedNs formati noto'g'ri." });
-    // Nanosekundni BigInt bilan tekshiramiz.
+    if (!parsed.success) return response.status(400).json({ error: 'elapsedNs formati noto\'g\'ri.' });
     const elapsedNs = parseNanoseconds(parsed.data.elapsedNs);
-    // Google akkaunti oldin nik tanlagan bo'lsa, uni almashtirishga yo'l qo'ymaymiz.
-    const previousNickname = await redis.hGet(USER_NICKNAMES_KEY, request.user.id);
-    // Bir akkauntdan bir nechta nik bilan reytingga kirishni rad qilamiz.
-    if (previousNickname && previousNickname !== parsed.data.nickname) return response.status(409).json({ error: 'Bu Google akkauntiga boshqa nik allaqachon biriktirilgan.' });
-    // Nikni birinchi marta shu Google subject bilan atomik band qilamiz.
-    const nicknameKey = `leaderboard:nickname:${parsed.data.nickname.toLowerCase()}`;
-    // Nikni Redis SET orqali boshqa akkauntdan atomik himoya qilamiz.
-    const nicknameOwner = await redis.set(nicknameKey, request.user.id, { NX: true, EX: 60 * 60 * 24 * 365 * 10 });
-    // Nik boshqa Google akkauntiga tegishli bo'lsa, rekordni rad qilamiz.
-    if (nicknameOwner === null) {
-      const owner = await redis.get(nicknameKey);
-      if (owner !== request.user.id) return response.status(409).json({ error: 'Bu nik allaqachon ishlatilgan.' });
-    }
-    // Nik tanlovini rekord yozilishidan oldin saqlab, akkaunt-nik invariantini mustahkamlaymiz.
-    await redis.hSet(USER_NICKNAMES_KEY, request.user.id, parsed.data.nickname);
-    // Redis Lua skripti uchun exact fixed-width qiymatni tayyorlaymiz.
-    const encodedNs = encodeNanoseconds(elapsedNs);
-    // Lua script ZSET va HASH yangilanishini atomik bajaradi.
-    const saved = await redis.eval(saveRecordScript, { keys: [LEADERBOARD_KEY, USER_RECORDS_KEY], arguments: [request.user.id, encodedNs] });
-    // Public response uchun foydalanuvchi nomini HASH'ga saqlaymiz.
-    await redis.hSet(USER_RECORDS_KEY, request.user.id, JSON.stringify({ nickname: parsed.data.nickname, email: request.user.email }));
-    // Rekord yaxshilangan yoki oldingi rekord saqlanib qolganini qaytaramiz.
-    return response.status(saved === 1 ? 201 : 200).json({ improved: saved === 1, ...formatUnits(elapsedNs) });
+    const user = await getOrCreateUser(request.user);
+    const result = await pool.query(`INSERT INTO scores (user_id, best_ns) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET best_ns = EXCLUDED.best_ns, updated_at = NOW() WHERE EXCLUDED.best_ns < scores.best_ns RETURNING best_ns`, [user.id, elapsedNs.toString()]);
+    return response.status(result.rowCount ? 201 : 200).json({ improved: Boolean(result.rowCount), ...formatUnits(elapsedNs) });
   } catch (error) {
-    // BigInt parsing xatosini client error sifatida qaytaramiz.
-    if (error instanceof SyntaxError || error.message.includes('Nanosekund')) return response.status(400).json({ error: error.message });
-    // Qolgan xatolarni umumiy handlerga yuboramiz.
+    if (error.message.includes('Nanosekund')) return response.status(400).json({ error: error.message });
     return next(error);
   }
 });
@@ -262,12 +229,11 @@ app.post('/api/leaderboard/submit', requireGoogleUser, rateLimit({ windowMs: 60 
 // API health-check endpointini taqdim qilamiz.
 app.get('/health', async (request, response) => {
   try {
-    // Health check ni haqiqiy Redis ulanishi bilan tekshiramiz.
-    await ensureRedisConnected();
-    return response.status(redis.isReady ? 200 : 503).json({ status: redis.isReady ? 'up' : 'down' });
+    await ensureDatabase();
+    return response.status(200).json({ status: 'up', database: 'postgresql' });
   } catch (error) {
     console.error('Health check xatosi:', error);
-    return response.status(503).json({ status: 'down' });
+    return response.status(503).json({ status: 'down', database: 'postgresql' });
   }
 });
 

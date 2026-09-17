@@ -101,6 +101,9 @@ h2 { margin: 0; font-size: clamp(28px, 4vw, 46px); letter-spacing: -0.06em; }
 .leader-time strong { color: var(--ink); font-size: 16px; font-weight: 400; }
 .leader-time span { white-space: nowrap; }
 .empty-row { padding: 20px 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.show-more-button { display: block; margin: 18px auto 0; padding: 12px 18px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font: 11px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.show-more-button:hover { border-color: var(--green); color: var(--green); }
+.show-more-button:disabled { cursor: wait; opacity: 0.55; }
 .nickname-overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(10, 16, 27, 0.86); backdrop-filter: blur(8px); }
 .nickname-overlay[hidden] { display: none; }
 .nickname-card { width: min(100%, 430px); padding: 34px; border: 1px solid rgba(244, 240, 232, 0.22); background: var(--panel); box-shadow: 0 24px 80px rgba(0,0,0,0.3); }

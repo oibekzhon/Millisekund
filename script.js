@@ -9,6 +9,7 @@ const resetButton = document.querySelector('#resetButton');
 const conversionResult = document.querySelector('#conversionResult');
 const leaderboardList = document.querySelector('#leaderboardList');
 const currentNickname = document.querySelector('#currentNickname');
+const showMoreButton = document.querySelector('#showMoreButton');
 const nicknameOverlay = document.querySelector('#nicknameOverlay');
 const nicknameForm = document.querySelector('#nicknameForm');
 const nicknameInput = document.querySelector('#nicknameInput');
@@ -24,6 +25,7 @@ const API_BASE = window.location.hostname.endsWith('github.io')
 let googleIdToken = sessionStorage.getItem('google-id-token') || '';
 // Global rejim faol bo'lsa, reyting backend'dan olinadi.
 let isGlobalMode = false;
+let leaderboardOffset = 0;
 
 const MAX_WAIT = 5000;
 let state = 'idle';
@@ -35,6 +37,8 @@ let best = Number(localStorage.getItem('reaction-best') || 0);
 let nickname = localStorage.getItem('reaction-nickname') || '';
 let leaderboard = JSON.parse(localStorage.getItem('reaction-leaderboard') || '[]');
 let usedNicknames = JSON.parse(localStorage.getItem('reaction-used-nicknames') || '[]');
+// Token mavjud bo'lsa, eski brauzer nickname'iga emas, serverdagi profilga ishonamiz.
+if (googleIdToken) nickname = '';
 
 function formatUnits(nanoseconds) {
   const exactNanoseconds = BigInt(nanoseconds);
@@ -55,29 +59,55 @@ function formatLeaderboardTime(nanoseconds) {
   return `<strong>${milliseconds.toLocaleString('uz-UZ')}<small> ms</small></strong><span>${microseconds.toLocaleString('uz-UZ')} µs · ${exactNanoseconds.toLocaleString('uz-UZ')} ns</span>`;
 }
 
-function renderLeaderboard(rows) {
+function renderLeaderboard(rows, current = null, append = false) {
   const sorted = rows || [...leaderboard].sort((left, right) => Number(getNanoseconds(left) - getNanoseconds(right))).slice(0, 10);
-  leaderboardList.innerHTML = sorted.length ? sorted.map((entry, index) => `
+  if (append) leaderboardList.querySelector('.personal-rank')?.remove();
+  const html = sorted.length ? sorted.map((entry, index) => `
     <li class="leaderboard-row ${entry.nickname === nickname ? 'is-current' : ''}">
-      <span class="rank">${String(index + 1).padStart(2, '0')}</span>
+      <span class="rank">${String(entry.rank || index + 1).padStart(2, '0')}</span>
       <span class="leader-name">@${entry.nickname}</span>
       <span class="leader-time">${formatLeaderboardTime(getNanoseconds(entry))}</span>
     </li>`).join('') : '<li class="empty-row">Hali natija yo\'q. Birinchi bo\'lib o\'zingizni sinang.</li>';
+  if (append) leaderboardList.insertAdjacentHTML('beforeend', html);
+  else leaderboardList.innerHTML = html;
+  if (current && current.rank > 10 && !sorted.some((entry) => entry.nickname === current.nickname)) {
+    leaderboardList.insertAdjacentHTML('beforeend', `<li class="leaderboard-row is-current personal-rank"><span class="rank">${current.rank}</span><span class="leader-name">@${current.nickname}</span><span class="leader-time">${formatLeaderboardTime(getNanoseconds(current))}</span></li>`);
+  }
   currentNickname.textContent = nickname ? `@${nickname}` : '@nik';
 }
 
 // Global reytingni backend'dan olib, mavjud formatga moslab chizamiz.
 async function fetchLeaderboard() {
   try {
-    const response = await fetch(`${API_BASE}/api/leaderboard`);
+    leaderboardOffset = 0;
+    const response = await fetch(`${API_BASE}/api/leaderboard?limit=10&offset=0`, { headers: googleIdToken ? { Authorization: `Bearer ${googleIdToken}` } : {} });
     if (!response.ok) throw new Error('leaderboard fetch failed');
-    const { data } = await response.json();
+    const { data, current, hasMore } = await response.json();
     isGlobalMode = true;
-    renderLeaderboard(data);
+    renderLeaderboard(data, current);
+    showMoreButton.hidden = !hasMore;
   } catch (error) {
     // Backend mavjud bo'lmasa (masalan lokal statik rejim), lokal reytingga qaytamiz.
     isGlobalMode = false;
+    showMoreButton.hidden = true;
     renderLeaderboard();
+  }
+}
+
+async function loadMoreLeaderboard() {
+  showMoreButton.disabled = true;
+  try {
+    leaderboardOffset += 10;
+    const response = await fetch(`${API_BASE}/api/leaderboard?limit=10&offset=${leaderboardOffset}`, { headers: googleIdToken ? { Authorization: `Bearer ${googleIdToken}` } : {} });
+    if (!response.ok) throw new Error('leaderboard pagination failed');
+    const { data, current, hasMore } = await response.json();
+    renderLeaderboard(data, current, true);
+    showMoreButton.hidden = !hasMore;
+  } catch (error) {
+    leaderboardOffset -= 10;
+    console.error('Reytingni ko\'proq yuklashda xato:', error);
+  } finally {
+    showMoreButton.disabled = false;
   }
 }
 
@@ -277,23 +307,10 @@ resetButton.addEventListener('click', () => {
 
 nicknameForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (!googleIdToken) {
-    nicknameError.textContent = 'Avval Google akkaunt orqali kiring.';
-    return;
-  }
-  const nextNickname = nicknameInput.value.trim();
-  const nicknameTaken = usedNicknames.some((usedNickname) => usedNickname.toLowerCase() === nextNickname.toLowerCase());
-  if (nicknameTaken) {
-    nicknameError.textContent = 'Bu nik allaqachon ishlatilgan. Boshqa nik tanlang.';
-    return;
-  }
-  nickname = nextNickname;
-  localStorage.setItem('reaction-nickname', nickname);
-  usedNicknames.push(nickname);
-  localStorage.setItem('reaction-used-nicknames', JSON.stringify(usedNicknames));
-  nicknameError.textContent = '';
-  showNicknameGate();
+  nicknameError.textContent = 'Google akkaunt orqali kiring.';
 });
+
+showMoreButton.addEventListener('click', loadMoreLeaderboard);
 
 updateStats();
 showNicknameGate();
