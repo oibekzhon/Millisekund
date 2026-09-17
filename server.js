@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // HTTP portini konfiguratsiyadan olamiz.
 const PORT = Number(process.env.PORT || 3000);
 // Railway PostgreSQL ulanish URL'sini konfiguratsiyadan olamiz.
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
 // Google OAuth client ID'si ID token audience'i bilan aynan bir xil bo'lishi kerak.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 // Frontend originlarini wildcard emas, vergul bilan ajratilgan aniq ro'yxat sifatida qabul qilamiz.
@@ -41,7 +41,7 @@ const app = express();
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 // Railway PostgreSQL klientini konfiguratsiya qilamiz.
 const { Pool } = pg;
-const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } }) : null;
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, connectionTimeoutMillis: 10000, ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } }) : null;
 // Xavfsiz default headerlarini yoqamiz, lekin Google Identity Services va Google Fonts uchun ruxsat qo'shamiz.
 app.use(helmet({
   contentSecurityPolicy: {
