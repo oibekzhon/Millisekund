@@ -106,7 +106,9 @@ function parseNanoseconds(value) {
 
 function normalizeNanoseconds(elapsedNs) {
   let prefix = elapsedNs - (elapsedNs % 100_000n);
-  const suffix = Array.from(randomBytes(5), (value) => (value % 9) + 1).join('');
+  const prefixSeed = Number((prefix / 100_000n) % 9n);
+  const source = (elapsedNs % 100_000n).toString().padStart(5, '0');
+  const suffix = [...source].map((digit, index) => digit === '0' ? String((prefixSeed + index) % 9 + 1) : digit).join('');
   const normalized = prefix + BigInt(suffix);
   if (normalized <= MAX_RESULT_NS) return normalized;
   prefix = prefix >= 100_000n ? prefix - 100_000n : 0n;

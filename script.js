@@ -16,7 +16,7 @@ const nicknameForm = document.querySelector('#nicknameForm');
 const nicknameInput = document.querySelector('#nicknameInput');
 const passwordInput = document.querySelector('#passwordInput');
 const nicknameError = document.querySelector('#nicknameError');
-
+ 
 const API_BASE = window.location.hostname.endsWith('github.io')
   ? 'https://millisekund.vercel.app'
   : '';
