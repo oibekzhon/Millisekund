@@ -6,10 +6,6 @@ import rateLimit from 'express-rate-limit';
 import pg from 'pg';
 import { z } from 'zod';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
@@ -22,6 +18,7 @@ const MAX_RESULT_NS = BigInt(process.env.MAX_RESULT_NS || '60000000000');
 const app = express();
 const { Pool } = pg;
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, connectionTimeoutMillis: 10000, ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } }) : null;
+app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -42,7 +39,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '8kb' }));
 app.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
-app.use(express.static(__dirname));
 
 let databaseInitPromise = null;
 async function ensureDatabase() {

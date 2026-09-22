@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: millisekund-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: MAX_RESULT_NS
+        value: 60000000000
+      - key: SUBMIT_RATE_LIMIT
+        value: 30
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
